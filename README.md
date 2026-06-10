@@ -16,6 +16,7 @@
 | **Pedidos** | Pedidos por WhatsApp/teléfono en **3 pasos desde el carrito** (cliente → repartidor → confirmar). Máquina de estados: `Pendiente → Asignado → Completado` (+ cancelación con devolución de stock). |
 | **Inventario** | Productos descuentan stock; servicios (flete, consulta veterinaria) se cobran sin tocar inventario. Ajustes +/- de un toque y alta exprés. |
 | **Resumen** | Flujo de caja del día: ventas cobradas, **utilidad neta**, ticket promedio, top de vendidos y salud de la sincronización. |
+| **Excel** | **Importación** de catálogo/clientes desde `.xlsx`/`.csv` con asistente de mapeo de columnas (funciona con cualquier formato de hoja), y **exportación** de reportes `.xlsx` con 3 hojas: Ventas, Detalle por artículo e Inventario valorizado. |
 | **Sincronización** | Outbox Pattern: cada operación queda en cola local y se envía **por lotes y en silencio** cuando hay conexión. UUID v4 de cliente en todo registro. |
 
 El primer arranque siembra un catálogo de demostración (semillas,
@@ -152,6 +153,25 @@ Respuesta esperada (HTTP 200):
 Reglas para el servidor: **upsert por `entidad_id`** (los `update` pueden
 llegar antes que su `create` si un lote anterior falló a medias) y
 **descartar `id` de operación ya procesados** (reintentos del cliente).
+
+## 📊 Importar y exportar Excel
+
+**Importar** (Inventario → botón ⬆️): elige `.xlsx` o `.csv`, el asistente
+detecta las columnas por su encabezado y tú confirmas el mapeo
+("esta columna es Nombre, esta es Precio venta…"). Los artículos con el
+mismo nombre se **actualizan** (precios/stock/categoría); los nuevos se
+crean con UUID. Nada se borra y todo queda encolado para sincronizar.
+Los clientes se deduplican por teléfono o nombre.
+
+> Nota: el `.xls` antiguo no es soportado — en Excel usa *Guardar como →
+> .xlsx o CSV*. Los CSV con `;` (Excel en español), BOM y saltos de línea
+> de Windows se detectan solos. Formato de números esperado: `1,750.50`.
+
+**Exportar** (Resumen → "Exportar a Excel"): elige rango (hoy / 7 días /
+mes / todo) y guarda un `.xlsx` con hojas **Ventas** (una fila por
+transacción con subtotal, descuento, total, costo y utilidad neta, más
+fila de totales), **Detalle** (una fila por artículo vendido, lista para
+tablas dinámicas) e **Inventario** (catálogo valorizado a costo).
 
 ## 🗺️ Siguientes pasos sugeridos
 

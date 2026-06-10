@@ -25,6 +25,8 @@ import '../domain/usecases/assign_order_usecase.dart';
 import '../domain/usecases/cancel_order_usecase.dart';
 import '../domain/usecases/complete_order_usecase.dart';
 import '../domain/usecases/get_sales_summary_usecase.dart';
+import '../domain/usecases/import_catalog_usecase.dart';
+import '../domain/usecases/import_customers_usecase.dart';
 import '../domain/usecases/process_transaction_usecase.dart';
 import '../domain/usecases/sync_pending_operations_usecase.dart';
 import 'state/cart_controller.dart';
@@ -116,6 +118,20 @@ final syncPendingUseCaseProvider = Provider(
   (ref) => SyncPendingOperationsUseCase(
     queue: ref.watch(syncQueueRepositoryProvider),
     gateway: ref.watch(syncGatewayProvider),
+  ),
+);
+
+final importCatalogUseCaseProvider = Provider(
+  (ref) => ImportCatalogUseCase(
+    catalog: ref.watch(catalogRepositoryProvider),
+    idGenerator: ref.watch(idGeneratorProvider),
+  ),
+);
+
+final importCustomersUseCaseProvider = Provider(
+  (ref) => ImportCustomersUseCase(
+    customers: ref.watch(customerRepositoryProvider),
+    idGenerator: ref.watch(idGeneratorProvider),
   ),
 );
 

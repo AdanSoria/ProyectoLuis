@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/utils/money.dart';
 import '../../../data/sync/sync_engine.dart';
 import '../../providers.dart';
+import 'export_dialog.dart';
 
 /// Resumen del día: flujo de caja (ventas y utilidad neta), pedidos
 /// vivos, top de artículos y salud de la sincronización.
@@ -83,7 +84,9 @@ class DashboardScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 16),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 FilledButton.tonalIcon(
                   onPressed: () =>
@@ -91,7 +94,11 @@ class DashboardScreen extends ConsumerWidget {
                   icon: const Icon(Icons.sync),
                   label: const Text('Sincronizar ahora'),
                 ),
-                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () => showExportDialog(context),
+                  icon: const Icon(Icons.table_view),
+                  label: const Text('Exportar a Excel'),
+                ),
                 if (sync.phase == SyncPhase.error)
                   OutlinedButton.icon(
                     onPressed: () =>
