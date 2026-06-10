@@ -5,6 +5,7 @@ import '../../../core/config/app_config.dart';
 import '../../../core/utils/money.dart';
 import '../../../domain/entities/catalog_item.dart';
 import '../../providers.dart';
+import 'import_wizard_sheet.dart';
 import 'item_editor_sheet.dart';
 
 /// Inventario de un vistazo: existencias, márgenes y ajuste rápido de
@@ -17,10 +18,23 @@ class InventoryScreen extends ConsumerWidget {
     final catalog = ref.watch(catalogListProvider);
 
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showItemEditorSheet(context),
-        icon: const Icon(Icons.add),
-        label: const Text('Agregar'),
+      floatingActionButton: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'inventory_import',
+            tooltip: 'Importar desde Excel/CSV',
+            onPressed: () => showImportWizardSheet(context),
+            child: const Icon(Icons.upload_file),
+          ),
+          const SizedBox(width: 12),
+          FloatingActionButton.extended(
+            heroTag: 'inventory_add',
+            onPressed: () => showItemEditorSheet(context),
+            icon: const Icon(Icons.add),
+            label: const Text('Agregar'),
+          ),
+        ],
       ),
       body: catalog.when(
         loading: () => const Center(child: CircularProgressIndicator()),
