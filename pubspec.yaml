@@ -1,0 +1,45 @@
+name: agropos
+description: >-
+  Mini-CRM y Punto de Venta (POS) offline-first de alta velocidad para
+  venta de insumos agrícolas, veterinaria y semillas en zonas rurales.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Gestión de estado (capa de presentación)
+  flutter_riverpod: ^2.5.1
+
+  # Persistencia local 100% offline (SQLite)
+  sqflite: ^2.3.3
+  # Soporte de SQLite en escritorio (Windows / Linux / macOS)
+  sqflite_common_ffi: ^2.3.3
+  path: ^1.9.0
+  path_provider: ^2.1.3
+
+  # IDs universales generados en el cliente (UUID v4)
+  uuid: ^4.4.0
+
+  # Formato de moneda y fechas
+  intl: '>=0.19.0 <0.21.0'
+
+  # Detección de conectividad para la sincronización silenciosa
+  connectivity_plus: ^6.0.3
+
+  # Cliente HTTP para el envío por lotes al backend REST
+  http: ^1.2.1
+
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

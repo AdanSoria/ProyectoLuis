@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "AgroPOS (debug)",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "AgroPOS (release)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "release"
+    }
+  ]
+}
