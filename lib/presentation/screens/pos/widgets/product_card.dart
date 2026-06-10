@@ -52,13 +52,19 @@ class ProductCard extends ConsumerWidget {
                           : scheme.onPrimaryContainer,
                     ),
                   ),
-                  const Spacer(),
-                  Text(
-                    Money.format(item.salePriceCents),
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.bold),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        Money.format(item.salePriceCents),
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                    ),
                   ),
                 ],
               ),

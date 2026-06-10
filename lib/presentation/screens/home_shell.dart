@@ -40,7 +40,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         .watch(pendingOrdersCountProvider)
         .maybeWhen(data: (n) => n, orElse: () => 0);
 
-    final pages = const [
+    const pages = [
       PosScreen(),
       OrdersScreen(),
       InventoryScreen(),

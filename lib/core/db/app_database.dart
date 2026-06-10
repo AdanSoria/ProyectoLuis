@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../utils/id_generator.dart';
@@ -22,10 +21,17 @@ class AppDatabase {
 
   static const int _schemaVersion = 1;
 
-  static Future<AppDatabase> open({String? overridePath}) async {
-    // En escritorio (Windows/Linux/macOS) sqflite usa la implementación FFI.
-    if (!kIsWeb &&
+  static Future<AppDatabase> open({
+    String? overridePath,
+    DatabaseFactory? factoryOverride,
+  }) async {
+    if (factoryOverride != null) {
+      // Pruebas: permite inyectar p. ej. databaseFactoryFfiNoIsolate,
+      // necesario porque los testWidgets corren en zona fake-async.
+      databaseFactory = factoryOverride;
+    } else if (!kIsWeb &&
         (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      // En escritorio (Windows/Linux/macOS) sqflite usa la implementación FFI.
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
