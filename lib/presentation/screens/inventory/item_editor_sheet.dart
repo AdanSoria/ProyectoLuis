@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils/money.dart';
 import '../../../domain/entities/catalog_item.dart';
+import '../../../domain/entities/product_variant.dart';
 import '../../providers.dart';
+import 'variant_manager_sheet.dart';
 
 /// Alta/edición exprés de artículos. Hoja compacta, sin Form tradicional:
 /// el botón Guardar se habilita en cuanto hay nombre y precio de venta.
@@ -195,6 +197,19 @@ class _ItemEditorState extends ConsumerState<_ItemEditor> {
                     helperText:
                         'Después se ajusta con +/- desde el inventario',
                   ),
+                )
+              else if (widget.existing is Product)
+                OutlinedButton.icon(
+                  onPressed: () => showVariantManagerSheet(
+                    context,
+                    productId: widget.existing!.id,
+                  ),
+                  icon: const Icon(Icons.category_outlined),
+                  label: Text(
+                    'Presentaciones '
+                    '(${(widget.existing! as Product).sellableVariants.length})'
+                    ' · fraccionar y volumen',
+                  ),
                 ),
               const SizedBox(height: 8),
               Wrap(
@@ -258,21 +273,37 @@ class _ItemEditorState extends ConsumerState<_ItemEditor> {
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
       );
+    } else if (existing is Product) {
+      // Los campos base editan a la variante DEFAULT; las demás
+      // presentaciones se conservan tal cual.
+      final defaultVariant = existing.defaultVariant.copyWith(
+        costPriceCents: cost,
+        salePriceCents: sale,
+        unit: _unit,
+      );
+      final others = existing.variants.length > 1
+          ? existing.variants.sublist(1)
+          : const <ProductVariant>[];
+      item = existing.copyWith(
+        name: name,
+        category: category,
+        costPriceCents: cost,
+        salePriceCents: sale,
+        unit: _unit,
+        updatedAt: now,
+        variants: [defaultVariant, ...others],
+      );
     } else {
-      final stock = existing is Product
-          ? existing.stock
-          : (double.tryParse(_stock.text) ?? 0);
-      item = Product(
+      item = Product.simple(
         id: id,
         name: name,
         category: category,
         costPriceCents: cost,
         salePriceCents: sale,
         unit: _unit,
-        active: existing?.active ?? true,
-        createdAt: existing?.createdAt ?? now,
+        createdAt: now,
         updatedAt: now,
-        stock: stock,
+        stock: double.tryParse(_stock.text) ?? 0,
       );
     }
 

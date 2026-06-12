@@ -185,9 +185,13 @@ class _DeliveryFlowState extends ConsumerState<_DeliveryFlow> {
               for (final customer in customers)
                 ChoiceChip(
                   avatar: const Icon(Icons.person_outline, size: 18),
-                  label: Text(customer.name),
+                  label: Text(customer.discountPercent > 0
+                      ? '${customer.name} (${customer.discountPercent % 1 == 0 ? customer.discountPercent.toInt() : customer.discountPercent}%)'
+                      : customer.name),
                   selected: _selectedCustomer?.id == customer.id,
                   onSelected: (_) {
+                    // El descuento del perfil aplica al ticket de inmediato.
+                    ref.read(cartProvider.notifier).setCustomer(customer);
                     setState(() {
                       _selectedCustomer = customer;
                       _step = 1; // avance automático: fricción cero

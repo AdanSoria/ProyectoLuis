@@ -4,12 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/utils/money.dart';
 import '../../../domain/entities/catalog_item.dart';
+import '../../../domain/entities/product_variant.dart';
 import '../../providers.dart';
+import 'break_variant_dialog.dart';
 import 'import_wizard_sheet.dart';
 import 'item_editor_sheet.dart';
 
-/// Inventario de un vistazo: existencias, márgenes y ajuste rápido de
-/// stock (+/-) sin formularios. Resalta el stock bajo.
+/// Inventario de un vistazo: existencias por variante, márgenes y ajuste
+/// rápido de stock (+/-) sin formularios. Los productos con varias
+/// presentaciones se despliegan y pueden FRACCIONARSE (desensamble).
 class InventoryScreen extends ConsumerWidget {
   const InventoryScreen({super.key});
 
@@ -59,81 +62,143 @@ class _InventoryTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final product = item is Product ? item as Product : null;
-    final lowStock =
-        product != null && product.stock <= AppConfig.lowStockThreshold;
 
     final marginPercent = item.salePriceCents == 0
         ? 0
         : (item.unitMarginCents * 100 / item.salePriceCents).round();
 
-    return ListTile(
-      onTap: () => showItemEditorSheet(context, existing: item),
-      leading: CircleAvatar(
-        backgroundColor: item.isService
-            ? scheme.tertiaryContainer
-            : scheme.primaryContainer,
-        child: Icon(
-          item.isService ? Icons.support_agent : Icons.inventory_2_outlined,
-          color: item.isService
-              ? scheme.onTertiaryContainer
-              : scheme.onPrimaryContainer,
-        ),
+    final leading = CircleAvatar(
+      backgroundColor: item.isService
+          ? scheme.tertiaryContainer
+          : scheme.primaryContainer,
+      child: Icon(
+        item.isService ? Icons.support_agent : Icons.inventory_2_outlined,
+        color: item.isService
+            ? scheme.onTertiaryContainer
+            : scheme.onPrimaryContainer,
       ),
+    );
+
+    // Servicios y productos simples: fila plana como siempre.
+    if (product == null || !product.hasMultipleVariants) {
+      return ListTile(
+        onTap: () => showItemEditorSheet(context, existing: item),
+        leading: leading,
+        title:
+            Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+          '${item.category} · Costo ${Money.format(item.costPriceCents)} · '
+          'Venta ${Money.format(item.salePriceCents)} · Margen $marginPercent%',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: product == null
+            ? const Chip(
+                visualDensity: VisualDensity.compact,
+                label: Text('Servicio'),
+              )
+            : _StockStepper(variant: product.defaultVariant),
+      );
+    }
+
+    // Producto con variantes: desplegable con stock por presentación.
+    return ExpansionTile(
+      leading: leading,
       title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(
-        '${item.category} · Costo ${Money.format(item.costPriceCents)} · '
-        'Venta ${Money.format(item.salePriceCents)} · Margen $marginPercent%',
+        '${item.category} · ${product.sellableVariants.length} presentaciones',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      trailing: product == null
-          ? const Chip(
-              visualDensity: VisualDensity.compact,
-              label: Text('Servicio'),
-            )
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  tooltip: 'Restar 1',
-                  visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.remove_circle_outline),
-                  onPressed: () => _adjust(context, ref, -1),
-                ),
-                InkWell(
-                  onTap: () => _adjustCustom(context, ref),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
-                    child: Text(
-                      product.stock % 1 == 0
-                          ? product.stock.toInt().toString()
-                          : product.stock.toStringAsFixed(2),
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(
-                            color: lowStock ? scheme.error : null,
-                            fontWeight: lowStock ? FontWeight.bold : null,
-                          ),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Sumar 1',
-                  visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.add_circle_outline),
-                  onPressed: () => _adjust(context, ref, 1),
-                ),
-              ],
+      childrenPadding: const EdgeInsets.only(left: 16, bottom: 8),
+      children: [
+        for (final variant in product.sellableVariants)
+          ListTile(
+            dense: true,
+            title: Text(variant.name),
+            subtitle: Text(
+              'Costo ${Money.format(variant.costPriceCents)} · '
+              'Venta ${Money.format(variant.salePriceCents)}'
+              '${variant.priceTiers.isEmpty ? '' : ' · ${variant.priceTiers.length} escalón(es)'}',
             ),
+            trailing: _StockStepper(variant: variant),
+          ),
+        Padding(
+          padding: const EdgeInsets.only(right: 16, bottom: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton.icon(
+                onPressed: () =>
+                    showItemEditorSheet(context, existing: item),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text('Editar'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.tonalIcon(
+                onPressed: () =>
+                    showBreakVariantDialog(context, product: product),
+                icon: const Icon(Icons.call_split, size: 18),
+                label: const Text('Fraccionar'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Steppers de stock (+/-) de UNA variante; tocar el número permite
+/// un ajuste de cantidad arbitraria (entrada de camión, merma).
+class _StockStepper extends ConsumerWidget {
+  const _StockStepper({required this.variant});
+
+  final ProductVariant variant;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final lowStock = variant.stock <= AppConfig.lowStockThreshold;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: 'Restar 1',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.remove_circle_outline),
+          onPressed: () => _adjust(context, ref, -1),
+        ),
+        InkWell(
+          onTap: () => _adjustCustom(context, ref),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Text(
+              variant.stock % 1 == 0
+                  ? variant.stock.toInt().toString()
+                  : variant.stock.toStringAsFixed(2),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: lowStock ? scheme.error : null,
+                    fontWeight: lowStock ? FontWeight.bold : null,
+                  ),
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Sumar 1',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.add_circle_outline),
+          onPressed: () => _adjust(context, ref, 1),
+        ),
+      ],
     );
   }
 
   Future<void> _adjust(
       BuildContext context, WidgetRef ref, double delta) async {
     final result = await ref.read(catalogRepositoryProvider).adjustStock(
-          productId: item.id,
+          variantId: variant.id,
           delta: delta,
           reason: 'ajuste_manual',
         );
@@ -150,18 +215,17 @@ class _InventoryTile extends ConsumerWidget {
     }
   }
 
-  /// Entrada de mercancía: sumar una cantidad arbitraria (llegó camión).
   Future<void> _adjustCustom(BuildContext context, WidgetRef ref) async {
     final controller = TextEditingController();
     final delta = await showDialog<double>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(item.name),
+        title: Text(variant.name),
         content: TextField(
           controller: controller,
           autofocus: true,
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true, signed: true),
+          keyboardType: const TextInputType.numberWithOptions(
+              decimal: true, signed: true),
           decoration: const InputDecoration(
             labelText: 'Ajuste (+ entrada, - merma)',
             hintText: 'Ej. 20 o -2',

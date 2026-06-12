@@ -82,8 +82,8 @@ enum OrderStatus {
   bool get isFinal => this == completado || this == cancelado;
 }
 
-/// Línea inmutable de una transacción. Congela nombre y precios del
-/// artículo al momento de la venta (snapshot), de modo que cambios
+/// Línea inmutable de una transacción. Congela nombre, variante y precios
+/// del artículo al momento de la venta (snapshot), de modo que cambios
 /// futuros del catálogo no alteren la historia financiera.
 class TransactionLine {
   const TransactionLine({
@@ -94,7 +94,10 @@ class TransactionLine {
     required this.quantity,
     required this.unitPriceCents,
     required this.unitCostCents,
-  });
+    this.variantId,
+    this.variantName,
+    int? listUnitPriceCents,
+  }) : listUnitPriceCents = listUnitPriceCents ?? unitPriceCents;
 
   /// UUID v4 generado en el cliente.
   final String id;
@@ -103,11 +106,21 @@ class TransactionLine {
   final bool isService;
   final double quantity;
 
-  /// `precio_venta` unitario congelado, en centavos.
+  /// `precio_venta` unitario EFECTIVO (puede venir de regateo), centavos.
   final int unitPriceCents;
 
   /// `precio_costo` unitario congelado, en centavos.
   final int unitCostCents;
+
+  /// Variante vendida (== [itemId] para la variante default/servicios).
+  final String? variantId;
+  final String? variantName;
+
+  /// `precio_lista`: el precio antes del regateo, para auditoría.
+  final int listUnitPriceCents;
+
+  /// Hubo sobreescritura manual de precio en esta línea.
+  bool get wasNegotiated => unitPriceCents != listUnitPriceCents;
 
   /// Importe de la línea (venta).
   int get totalCents => (unitPriceCents * quantity).round();

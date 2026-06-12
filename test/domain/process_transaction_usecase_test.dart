@@ -4,6 +4,7 @@ import 'package:agropos/core/utils/result.dart';
 import 'package:agropos/domain/entities/cart_line.dart';
 import 'package:agropos/domain/entities/catalog_item.dart';
 import 'package:agropos/domain/entities/delivery_person.dart';
+import 'package:agropos/domain/entities/insights.dart';
 import 'package:agropos/domain/entities/transaction.dart';
 import 'package:agropos/domain/repositories/transaction_repository.dart';
 import 'package:agropos/domain/usecases/process_transaction_usecase.dart';
@@ -20,7 +21,7 @@ class _FakeTransactionRepository implements TransactionRepository {
 
   @override
   Future<Result<Transaction>> update(Transaction transaction,
-          {bool restock = false}) async =>
+          {bool restock = false, bool creditCustomerStats = false}) async =>
       Ok(transaction);
 
   @override
@@ -35,6 +36,16 @@ class _FakeTransactionRepository implements TransactionRepository {
 
   @override
   Future<int> countOrders({required List<OrderStatus> statuses}) async => 0;
+
+  @override
+  Future<List<TopBuyer>> getTopBuyers({int limit = 10}) async => const [];
+
+  @override
+  Future<List<ChannelSales>> getSalesByChannel() async => const [];
+
+  @override
+  Future<List<CategorySales>> getTopCategories({int limit = 8}) async =>
+      const [];
 }
 
 class _SequentialIds implements IdGenerator {

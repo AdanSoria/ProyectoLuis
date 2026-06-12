@@ -100,7 +100,7 @@ void main() {
   });
 
   test('cancelar un pedido devuelve el stock al inventario', () async {
-    final feed = await productByName('Alimento para becerro 40 kg');
+    final feed = await productByName('Alimento para becerro');
     expect(feed.stock, 35);
 
     final created = await processTransaction(ProcessTransactionInput(
@@ -110,14 +110,14 @@ void main() {
       customerName: 'Rancho La Loma',
     ));
     expect(created.isOk, isTrue);
-    expect((await productByName('Alimento para becerro 40 kg')).stock, 30);
+    expect((await productByName('Alimento para becerro')).stock, 30);
 
     final cancel = CancelOrderUseCase(transactions: transactions);
     final cancelled = await cancel(orderId: created.valueOrNull!.id);
 
     expect(cancelled.isOk, isTrue, reason: '${cancelled.failureOrNull}');
     expect(cancelled.valueOrNull!.status, OrderStatus.cancelado);
-    expect((await productByName('Alimento para becerro 40 kg')).stock, 35);
+    expect((await productByName('Alimento para becerro')).stock, 35);
 
     // Movimientos: salida del pedido + reposición por cancelación.
     expect(await count('movimientos_inventario'), 2);

@@ -1,7 +1,10 @@
+import 'package:sqflite/sqflite.dart' show DatabaseExecutor;
+
 import '../../core/db/app_database.dart';
 import '../../core/errors/failures.dart';
 import '../../core/utils/id_generator.dart';
 import '../../core/utils/result.dart';
+import '../../domain/entities/insights.dart';
 import '../../domain/entities/sync_queue.dart';
 import '../../domain/entities/transaction.dart';
 import '../../domain/repositories/transaction_repository.dart';
@@ -9,7 +12,8 @@ import '../models/sync_queue_model.dart';
 import '../models/transaction_model.dart';
 
 /// Implementación SQLite. Toda mutación ocurre dentro de UNA transacción
-/// de base de datos: venta + stock + movimientos + Outbox, todo o nada.
+/// de base de datos: venta + stock por variante + movimientos + historial
+/// del cliente + Outbox, todo o nada.
 class TransactionRepositoryImpl implements TransactionRepository {
   TransactionRepositoryImpl(this._db, this._ids);
 
@@ -22,18 +26,20 @@ class TransactionRepositoryImpl implements TransactionRepository {
       late Result<Transaction> outcome;
 
       await _db.db.transaction((txn) async {
-        // 1. Validar existencias de las líneas de producto.
+        // 1. Validar existencias por VARIANTE (los servicios no aplican).
+        //    Para datos previos a variantes, la default usa el id del item.
         for (final line in transaction.lines.where((l) => !l.isService)) {
+          final variantId = line.variantId ?? line.itemId;
           final rows = await txn.query(
-            'catalogo',
-            columns: ['stock', 'nombre'],
+            'variantes',
+            columns: ['stock'],
             where: 'id = ?',
-            whereArgs: [line.itemId],
+            whereArgs: [variantId],
             limit: 1,
           );
           if (rows.isEmpty) {
             outcome = Err(NotFoundFailure(
-                'El producto "${line.itemName}" ya no está en el catálogo.'));
+                '"${line.itemName}" ya no está en el catálogo.'));
             return;
           }
           final available = (rows.first['stock'] as num?)?.toDouble() ?? 0;
@@ -45,16 +51,18 @@ class TransactionRepositoryImpl implements TransactionRepository {
 
         final nowIso = transaction.createdAt.toIso8601String();
 
-        // 2. Descontar inventario y registrar el movimiento (solo productos;
-        //    los servicios se cobran sin tocar stock).
+        // 2. Descontar inventario y registrar el movimiento.
         for (final line in transaction.lines.where((l) => !l.isService)) {
+          final variantId = line.variantId ?? line.itemId;
           await txn.rawUpdate(
-            'UPDATE catalogo SET stock = stock - ?, actualizado_en = ? WHERE id = ?',
-            [line.quantity, nowIso, line.itemId],
+            'UPDATE variantes SET stock = stock - ?, actualizado_en = ? '
+            'WHERE id = ?',
+            [line.quantity, nowIso, variantId],
           );
           await txn.insert('movimientos_inventario', {
             'id': _ids.newId(),
             'item_id': line.itemId,
+            'variante_id': variantId,
             'delta': -line.quantity,
             'motivo': transaction.kind.code,
             'transaccion_id': transaction.id,
@@ -69,7 +77,12 @@ class TransactionRepositoryImpl implements TransactionRepository {
               TransactionModel.lineToRow(transaction.id, line));
         }
 
-        // 4. Encolar en el Outbox (misma transacción SQLite = atómico).
+        // 4. Historial del cliente: solo dinero realmente cobrado.
+        if (transaction.status == OrderStatus.completado) {
+          await _creditCustomer(txn, transaction);
+        }
+
+        // 5. Encolar en el Outbox (misma transacción SQLite = atómico).
         await SyncQueueModel.enqueue(
           txn,
           SyncQueueEntry(
@@ -95,6 +108,7 @@ class TransactionRepositoryImpl implements TransactionRepository {
   Future<Result<Transaction>> update(
     Transaction transaction, {
     bool restock = false,
+    bool creditCustomerStats = false,
   }) async {
     try {
       await _db.db.transaction((txn) async {
@@ -107,22 +121,31 @@ class TransactionRepositoryImpl implements TransactionRepository {
           whereArgs: [transaction.id],
         );
 
-        // Cancelación: devolver existencias de productos al inventario.
+        // Cancelación: devolver existencias a sus variantes.
         if (restock) {
           for (final line in transaction.lines.where((l) => !l.isService)) {
+            final variantId = line.variantId ?? line.itemId;
             await txn.rawUpdate(
-              'UPDATE catalogo SET stock = stock + ?, actualizado_en = ? WHERE id = ?',
-              [line.quantity, nowIso, line.itemId],
+              'UPDATE variantes SET stock = stock + ?, actualizado_en = ? '
+              'WHERE id = ?',
+              [line.quantity, nowIso, variantId],
             );
             await txn.insert('movimientos_inventario', {
               'id': _ids.newId(),
               'item_id': line.itemId,
+              'variante_id': variantId,
               'delta': line.quantity,
               'motivo': 'cancelacion',
               'transaccion_id': transaction.id,
               'creado_en': nowIso,
             });
           }
+        }
+
+        // Pedido entregado y cobrado: acumular historial del cliente.
+        if (creditCustomerStats &&
+            transaction.status == OrderStatus.completado) {
+          await _creditCustomer(txn, transaction);
         }
 
         await SyncQueueModel.enqueue(
@@ -142,6 +165,26 @@ class TransactionRepositoryImpl implements TransactionRepository {
     } on Exception catch (e) {
       return Err(DatabaseFailure('No se pudo actualizar el pedido: $e'));
     }
+  }
+
+  /// `total_spent`, número de compras y última compra del cliente.
+  /// (El servidor puede derivar esto de las transacciones, por eso no
+  /// genera una entrada extra en el Outbox.)
+  Future<void> _creditCustomer(
+    DatabaseExecutor txn,
+    Transaction transaction,
+  ) async {
+    final customerId = transaction.customerId;
+    if (customerId == null) return;
+    await txn.rawUpdate(
+      'UPDATE clientes SET total_gastado = total_gastado + ?, '
+      'compras = compras + 1, ultima_compra = ? WHERE id = ?',
+      [
+        transaction.totalCents,
+        transaction.updatedAt.toIso8601String(),
+        customerId,
+      ],
+    );
   }
 
   @override
@@ -185,6 +228,66 @@ class TransactionRepositoryImpl implements TransactionRepository {
       [TransactionKind.pedido.code, ...statuses.map((s) => s.code)],
     );
     return (rows.first['n'] as num?)?.toInt() ?? 0;
+  }
+
+  // ------------------------------------------------ analítica local (SQL)
+
+  @override
+  Future<List<TopBuyer>> getTopBuyers({int limit = 10}) async {
+    final rows = await _db.db.rawQuery(
+      'SELECT cliente_id, cliente_nombre, SUM(total) AS total, '
+      'COUNT(*) AS compras FROM transacciones '
+      "WHERE estado = 'completado' AND cliente_id IS NOT NULL "
+      'GROUP BY cliente_id ORDER BY total DESC LIMIT ?',
+      [limit],
+    );
+    return [
+      for (final row in rows)
+        TopBuyer(
+          customerId: row['cliente_id'] as String,
+          name: (row['cliente_nombre'] as String?) ?? 'Cliente',
+          totalCents: (row['total'] as num?)?.toInt() ?? 0,
+          purchases: (row['compras'] as num?)?.toInt() ?? 0,
+        ),
+    ];
+  }
+
+  @override
+  Future<List<ChannelSales>> getSalesByChannel() async {
+    final rows = await _db.db.rawQuery(
+      'SELECT canal, SUM(total) AS total, COUNT(*) AS n FROM transacciones '
+      "WHERE estado = 'completado' GROUP BY canal ORDER BY total DESC",
+    );
+    return [
+      for (final row in rows)
+        ChannelSales(
+          channelCode: row['canal'] as String,
+          totalCents: (row['total'] as num?)?.toInt() ?? 0,
+          count: (row['n'] as num?)?.toInt() ?? 0,
+        ),
+    ];
+  }
+
+  @override
+  Future<List<CategorySales>> getTopCategories({int limit = 8}) async {
+    final rows = await _db.db.rawQuery(
+      'SELECT c.categoria AS categoria, SUM(l.importe) AS total, '
+      'SUM(l.cantidad) AS cantidad '
+      'FROM transaccion_lineas l '
+      'JOIN transacciones t ON t.id = l.transaccion_id '
+      'JOIN catalogo c ON c.id = l.item_id '
+      "WHERE t.estado = 'completado' "
+      'GROUP BY c.categoria ORDER BY total DESC LIMIT ?',
+      [limit],
+    );
+    return [
+      for (final row in rows)
+        CategorySales(
+          category: row['categoria'] as String,
+          totalCents: (row['total'] as num?)?.toInt() ?? 0,
+          quantity: (row['cantidad'] as num?)?.toDouble() ?? 0,
+        ),
+    ];
   }
 
   /// Carga cabeceras + todas sus líneas en dos consultas (sin N+1).

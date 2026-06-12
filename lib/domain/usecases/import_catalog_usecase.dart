@@ -1,5 +1,6 @@
 import '../../core/utils/id_generator.dart';
 import '../entities/catalog_item.dart';
+import '../entities/product_variant.dart';
 import '../repositories/catalog_repository.dart';
 
 /// Fila descartada durante una importación, con su motivo legible.
@@ -119,7 +120,8 @@ class ImportCatalogUseCase {
             updatedAt: now,
           );
         } else {
-          item = Product(
+          // Producto simple: nace con su variante default (id compartido).
+          item = Product.simple(
             id: _ids.newId(),
             name: name,
             category: category.isEmpty ? 'General' : category,
@@ -146,24 +148,39 @@ class ImportCatalogUseCase {
 
       // Existente: el archivo manda en lo que sí trae mapeado; lo demás
       // se conserva. Si estaba oculto, la importación lo reactiva.
-      final CatalogItem merged = switch (found) {
-        final Product p => p.copyWith(
+      // En productos solo se toca la variante DEFAULT; las demás
+      // presentaciones quedan intactas.
+      final CatalogItem merged;
+      switch (found) {
+        case final Product p:
+          final defaultVariant = p.defaultVariant.copyWith(
             salePriceCents: row.salePriceCents,
             costPriceCents: row.costPriceCents,
             stock: row.stock,
+            unit: unit.isEmpty ? null : unit,
+          );
+          final others = p.variants.length > 1
+              ? p.variants.sublist(1)
+              : const <ProductVariant>[];
+          merged = p.copyWith(
+            salePriceCents: defaultVariant.salePriceCents,
+            costPriceCents: defaultVariant.costPriceCents,
+            stock: defaultVariant.stock,
             category: category.isEmpty ? null : category,
             unit: unit.isEmpty ? null : unit,
             active: true,
             updatedAt: now,
-          ),
-        final Service s => s.copyWith(
+            variants: [defaultVariant, ...others],
+          );
+        case final Service s:
+          merged = s.copyWith(
             salePriceCents: row.salePriceCents,
             costPriceCents: row.costPriceCents,
             category: category.isEmpty ? null : category,
             active: true,
             updatedAt: now,
-          ),
-      };
+          );
+      }
 
       final result = await _catalog.save(merged, isNew: false);
       result.fold(

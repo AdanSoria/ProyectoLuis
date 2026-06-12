@@ -122,11 +122,15 @@ class ProcessTransactionUseCase {
         TransactionLine(
           id: _ids.newId(),
           itemId: cartLine.item.id,
-          itemName: cartLine.item.name,
+          itemName: cartLine.displayName,
           isService: cartLine.item.isService,
           quantity: cartLine.quantity,
-          unitPriceCents: cartLine.item.salePriceCents, // precio_venta
-          unitCostCents: cartLine.item.costPriceCents, // precio_costo
+          // precio_venta efectivo: regateo > escalón por volumen > lista.
+          unitPriceCents: cartLine.unitPriceCents,
+          unitCostCents: cartLine.unitCostCents, // precio_costo
+          variantId: cartLine.effectiveVariant?.id,
+          variantName: cartLine.effectiveVariant?.name,
+          listUnitPriceCents: cartLine.listUnitPriceCents,
         ),
     ];
 
