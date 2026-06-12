@@ -6,15 +6,27 @@ abstract class CatalogRepository {
 
   Future<CatalogItem?> getById(String id);
 
-  /// Inserta o actualiza el artículo y encola la operación en el Outbox
-  /// dentro de la misma transacción local.
+  /// Inserta o actualiza el artículo (incluidas sus variantes) y encola
+  /// la operación en el Outbox dentro de la misma transacción local.
   Future<Result<CatalogItem>> save(CatalogItem item, {required bool isNew});
 
-  /// Ajuste manual de existencias (+/-). Registra el movimiento de
-  /// inventario y encola la sincronización de forma atómica.
+  /// Ajuste manual de existencias (+/-) de UNA variante. Registra el
+  /// movimiento de inventario y encola la sincronización atómicamente.
+  /// Para productos simples, el id de la variante default es el mismo
+  /// id del producto.
   Future<Result<void>> adjustStock({
-    required String productId,
+    required String variantId,
     required double delta,
     required String reason,
+  });
+
+  /// **Desensamble (bulk breaking)**: convierte [quantity] unidades de la
+  /// variante origen en su equivalente de la variante destino, usando la
+  /// proporción de `contentUnits` (1 costal de 50 kg -> 50 de granel kg).
+  /// Atómico: ambos stocks + movimientos + Outbox, todo o nada.
+  Future<Result<double>> breakVariant({
+    required String sourceVariantId,
+    required String targetVariantId,
+    required double quantity,
   });
 }

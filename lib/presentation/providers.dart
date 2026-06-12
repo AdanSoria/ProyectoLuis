@@ -21,9 +21,12 @@ import '../domain/repositories/delivery_repository.dart';
 import '../domain/repositories/sync_gateway.dart';
 import '../domain/repositories/sync_queue_repository.dart';
 import '../domain/repositories/transaction_repository.dart';
+import '../domain/entities/insights.dart';
 import '../domain/usecases/assign_order_usecase.dart';
+import '../domain/usecases/break_variant_usecase.dart';
 import '../domain/usecases/cancel_order_usecase.dart';
 import '../domain/usecases/complete_order_usecase.dart';
+import '../domain/usecases/get_customer_insights_usecase.dart';
 import '../domain/usecases/get_sales_summary_usecase.dart';
 import '../domain/usecases/import_catalog_usecase.dart';
 import '../domain/usecases/import_customers_usecase.dart';
@@ -135,6 +138,16 @@ final importCustomersUseCaseProvider = Provider(
   ),
 );
 
+final breakVariantUseCaseProvider = Provider(
+  (ref) =>
+      BreakVariantUseCase(catalog: ref.watch(catalogRepositoryProvider)),
+);
+
+final customerInsightsUseCaseProvider = Provider(
+  (ref) => GetCustomerInsightsUseCase(
+      transactions: ref.watch(transactionRepositoryProvider)),
+);
+
 // ------------------------------------------------------- motor de sincronía
 
 final syncEngineProvider =
@@ -198,6 +211,21 @@ final recentCustomersProvider = FutureProvider<List<Customer>>(
   (ref) => ref.watch(customerRepositoryProvider).getRecent(8),
 );
 
+/// Búsqueda de la pantalla de clientes.
+final customerSearchProvider = StateProvider<String>((_) => '');
+
+/// Cartera de clientes (filtrada por búsqueda).
+final customerListProvider = FutureProvider<List<Customer>>((ref) {
+  final query = ref.watch(customerSearchProvider).trim();
+  final repository = ref.watch(customerRepositoryProvider);
+  return query.isEmpty ? repository.getRecent(500) : repository.search(query);
+});
+
+/// Analítica local: top compradores, canales y categorías.
+final customerInsightsProvider = FutureProvider<CustomerInsights>(
+  (ref) => ref.watch(customerInsightsUseCaseProvider).call(),
+);
+
 final deliveryPeopleProvider = FutureProvider<List<DeliveryPerson>>(
   (ref) => ref.watch(deliveryRepositoryProvider).getActive(),
 );
@@ -214,6 +242,8 @@ void refreshAfterMutation(WidgetRef ref) {
   ref.invalidate(ordersProvider);
   ref.invalidate(pendingOrdersCountProvider);
   ref.invalidate(recentCustomersProvider);
+  ref.invalidate(customerListProvider);
+  ref.invalidate(customerInsightsProvider);
   ref.invalidate(salesSummaryProvider);
   final engine = ref.read(syncEngineProvider.notifier);
   Future<void>.microtask(() async {

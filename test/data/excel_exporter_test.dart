@@ -96,13 +96,14 @@ void main() {
     final detalle = excel.tables['Detalle']!.rows;
     expect(detalle, hasLength(1 + 4));
     expect(text(detalle[2][3]), 'Flete local');
-    expect(text(detalle[2][4]), 'Servicio');
+    expect(text(detalle[2][5]), 'Servicio');
 
-    // Inventario: encabezado + 2 artículos, valorizado a costo.
+    // Inventario: encabezado + 1 variante de producto + 1 servicio.
     final inventario = excel.tables['Inventario']!.rows;
     expect(inventario, hasLength(3));
     expect(text(inventario[1][0]), 'Fertilizante');
-    expect(number(inventario[1][8]), 40 * 780.0); // valor a costo
-    expect(text(inventario[2][7]), ''); // servicio: sin stock
+    expect(number(inventario[1][10]), 40.0); // stock
+    expect(number(inventario[1][11]), 40 * 780.0); // valor a costo
+    expect(text(inventario[2][10]), ''); // servicio: sin stock
   });
 }

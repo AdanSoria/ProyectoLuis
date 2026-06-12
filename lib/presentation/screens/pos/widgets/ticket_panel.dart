@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/utils/money.dart';
+import '../../../../domain/entities/cart_line.dart';
 import '../../../providers.dart';
 import 'charge_dialog.dart';
+import 'customer_picker_sheet.dart';
 import 'delivery_flow_sheet.dart';
 
 /// Ticket de cobro (lado derecho del mostrador).
-/// Carrito interactivo: steppers de cantidad, descuento rápido y dos
+/// Carrito interactivo: cliente con descuento de perfil, steppers de
+/// cantidad, regateo por línea (mantener presionado el precio) y dos
 /// acciones grandes: COBRAR (mostrador) o PEDIDO (flujo de reparto).
 class TicketPanel extends ConsumerWidget {
   const TicketPanel({super.key});
@@ -40,6 +43,32 @@ class TicketPanel extends ConsumerWidget {
               ],
             ),
           ),
+          // ------------------------------------------------ cliente (CRM)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: cart.customer == null
+                  ? ActionChip(
+                      avatar: const Icon(Icons.person_add_alt, size: 18),
+                      label: const Text('Asignar cliente'),
+                      onPressed: () => _pickCustomer(context, ref),
+                    )
+                  : InputChip(
+                      avatar: const Icon(Icons.person, size: 18),
+                      label: Text(
+                        cart.customer!.discountPercent > 0
+                            ? '${cart.customer!.name} · '
+                                '${cart.customer!.category.label} '
+                                '${_percent(cart.customer!.discountPercent)}%'
+                            : cart.customer!.name,
+                      ),
+                      onPressed: () => _pickCustomer(context, ref),
+                      onDeleted: () =>
+                          ref.read(cartProvider.notifier).setCustomer(null),
+                    ),
+            ),
+          ),
           Expanded(
             child: cart.isEmpty
                 ? Center(
@@ -62,62 +91,8 @@ class TicketPanel extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     itemCount: cart.lines.length,
                     separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, i) {
-                      final line = cart.lines[i];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(line.item.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: textTheme.bodyMedium),
-                                  Text(
-                                    '${Money.format(line.item.salePriceCents)} '
-                                    '· ${line.item.unit}',
-                                    style: textTheme.labelSmall
-                                        ?.copyWith(color: scheme.outline),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              icon: const Icon(Icons.remove_circle_outline),
-                              onPressed: () => ref
-                                  .read(cartProvider.notifier)
-                                  .decrement(line.item.id),
-                            ),
-                            Text(
-                              line.quantity % 1 == 0
-                                  ? line.quantity.toInt().toString()
-                                  : line.quantity.toStringAsFixed(2),
-                              style: textTheme.titleMedium,
-                            ),
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              icon: const Icon(Icons.add_circle_outline),
-                              onPressed: () => ref
-                                  .read(cartProvider.notifier)
-                                  .increment(line.item.id),
-                            ),
-                            SizedBox(
-                              width: 78,
-                              child: Text(
-                                Money.format(line.totalCents),
-                                textAlign: TextAlign.end,
-                                style: textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                    itemBuilder: (context, i) =>
+                        _LineRow(line: cart.lines[i]),
                   ),
           ),
           const Divider(height: 1),
@@ -145,7 +120,13 @@ class TicketPanel extends ConsumerWidget {
                           ? null
                           : () => _askDiscount(context, ref),
                       icon: const Icon(Icons.percent, size: 16),
-                      label: const Text('Descuento'),
+                      label: Text(
+                        cart.isManualDiscount
+                            ? 'Descuento manual'
+                            : cart.autoDiscountCents > 0
+                                ? 'Descuento cliente'
+                                : 'Descuento',
+                      ),
                     ),
                     Text(
                       cart.deductionsCents == 0
@@ -196,6 +177,17 @@ class TicketPanel extends ConsumerWidget {
     );
   }
 
+  String _percent(double value) => value % 1 == 0
+      ? value.toInt().toString()
+      : value.toStringAsFixed(1);
+
+  Future<void> _pickCustomer(BuildContext context, WidgetRef ref) async {
+    final customer = await showCustomerPickerSheet(context, ref);
+    if (customer != null) {
+      ref.read(cartProvider.notifier).setCustomer(customer);
+    }
+  }
+
   void _confirmClear(BuildContext context, WidgetRef ref) {
     showDialog<void>(
       context: context,
@@ -219,38 +211,187 @@ class TicketPanel extends ConsumerWidget {
   }
 
   Future<void> _askDiscount(BuildContext context, WidgetRef ref) async {
+    final cart = ref.read(cartProvider);
     final controller = TextEditingController();
-    final cents = await showDialog<int>(
+    final result = await showDialog<(bool, int)>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Descuento del ticket'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'Monto en pesos',
-            prefixText: r'$ ',
-          ),
-          onSubmitted: (value) =>
-              Navigator.of(dialogContext).pop(Money.fromText(value)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (cart.customer != null && cart.customer!.discountPercent > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Perfil del cliente: '
+                  '${_percent(cart.customer!.discountPercent)}% '
+                  '(${Money.format(cart.autoDiscountCents)})',
+                  style: Theme.of(dialogContext).textTheme.bodySmall,
+                ),
+              ),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Monto manual en pesos',
+                prefixText: r'$ ',
+              ),
+              onSubmitted: (value) => Navigator.of(dialogContext)
+                  .pop((false, Money.fromText(value))),
+            ),
+          ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(0),
-            child: const Text('Quitar descuento'),
+            onPressed: () => Navigator.of(dialogContext).pop((true, 0)),
+            child: Text(cart.customer != null
+                ? 'Usar el del cliente'
+                : 'Sin descuento'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.of(dialogContext).pop(Money.fromText(controller.text)),
+            onPressed: () => Navigator.of(dialogContext)
+                .pop((false, Money.fromText(controller.text))),
+            child: const Text('Aplicar manual'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+    final (useAuto, cents) = result;
+    ref
+        .read(cartProvider.notifier)
+        .setManualDeductions(useAuto ? null : cents);
+  }
+}
+
+class _LineRow extends ConsumerWidget {
+  const _LineRow({required this.line});
+
+  final CartLine line;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(line.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: textTheme.bodyMedium),
+                // Mantener presionado el precio = regateo.
+                InkWell(
+                  onLongPress: () => _negotiatePrice(context, ref),
+                  child: Text(
+                    line.hasOverride
+                        ? '${Money.format(line.unitPriceCents)} '
+                            '(lista ${Money.format(line.listUnitPriceCents)})'
+                        : '${Money.format(line.unitPriceCents)} '
+                            '· ${line.effectiveVariant?.unit ?? line.item.unit}',
+                    style: textTheme.labelSmall?.copyWith(
+                      color:
+                          line.hasOverride ? scheme.tertiary : scheme.outline,
+                      fontWeight: line.hasOverride ? FontWeight.bold : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.remove_circle_outline),
+            onPressed: () => ref.read(cartProvider.notifier).decrement(line),
+          ),
+          Text(
+            line.quantity % 1 == 0
+                ? line.quantity.toInt().toString()
+                : line.quantity.toStringAsFixed(2),
+            style: textTheme.titleMedium,
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.add_circle_outline),
+            onPressed: () => ref.read(cartProvider.notifier).increment(line),
+          ),
+          SizedBox(
+            width: 78,
+            child: InkWell(
+              onLongPress: () => _negotiatePrice(context, ref),
+              child: Text(
+                Money.format(line.totalCents),
+                textAlign: TextAlign.end,
+                style:
+                    textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Sobreescritura de precio ("Manual Override") para regateo rápido.
+  Future<void> _negotiatePrice(BuildContext context, WidgetRef ref) async {
+    final controller = TextEditingController(
+        text: (line.unitPriceCents / 100).toStringAsFixed(2));
+    final result = await showDialog<(bool, int)>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(line.displayName),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Precio de lista: ${Money.format(line.listUnitPriceCents)}',
+              style: Theme.of(dialogContext).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Precio negociado (por unidad)',
+                prefixText: r'$ ',
+              ),
+              onSubmitted: (value) => Navigator.of(dialogContext)
+                  .pop((false, Money.fromText(value))),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop((true, 0)),
+            child: const Text('Volver a lista'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext)
+                .pop((false, Money.fromText(controller.text))),
             child: const Text('Aplicar'),
           ),
         ],
       ),
     );
 
-    if (cents != null) {
-      ref.read(cartProvider.notifier).setDeductions(cents);
-    }
+    if (result == null) return;
+    final (resetToList, cents) = result;
+    ref
+        .read(cartProvider.notifier)
+        .setPriceOverride(line, resetToList || cents <= 0 ? null : cents);
   }
 }

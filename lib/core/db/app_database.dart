@@ -19,7 +19,7 @@ class AppDatabase {
   /// Viaja en cada lote de sincronización para auditoría multi-sucursal.
   final String deviceId;
 
-  static const int _schemaVersion = 1;
+  static const int _schemaVersion = 2;
 
   static Future<AppDatabase> open({
     String? overridePath,
@@ -52,6 +52,9 @@ class AppDatabase {
         await _createSchema(db);
         await _seedDemoData(db);
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) await _migrateV1toV2(db);
+      },
     );
 
     final deviceId = await _ensureDeviceId(db);
@@ -77,12 +80,38 @@ class AppDatabase {
       )
     ''');
 
+    // Variantes (SKUs): cada presentación tiene precio y stock propios.
+    // La variante default de un producto comparte su mismo id.
+    await db.execute('''
+      CREATE TABLE variantes(
+        id TEXT PRIMARY KEY,
+        producto_id TEXT NOT NULL REFERENCES catalogo(id),
+        nombre TEXT NOT NULL,
+        sku TEXT,
+        precio_costo INTEGER NOT NULL DEFAULT 0,
+        precio_venta INTEGER NOT NULL DEFAULT 0,
+        stock REAL NOT NULL DEFAULT 0,
+        unidad TEXT NOT NULL DEFAULT 'pieza',
+        contenido REAL NOT NULL DEFAULT 1,
+        es_default INTEGER NOT NULL DEFAULT 0,
+        activo INTEGER NOT NULL DEFAULT 1,
+        precios_volumen TEXT,
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      )
+    ''');
+
     await db.execute('''
       CREATE TABLE clientes(
         id TEXT PRIMARY KEY,
         nombre TEXT NOT NULL,
         telefono TEXT,
         notas TEXT,
+        categoria TEXT NOT NULL DEFAULT 'minorista',
+        descuento_pct REAL NOT NULL DEFAULT 0,
+        total_gastado INTEGER NOT NULL DEFAULT 0,
+        compras INTEGER NOT NULL DEFAULT 0,
+        ultima_compra TEXT,
         creado_en TEXT NOT NULL
       )
     ''');
@@ -132,7 +161,10 @@ class AppDatabase {
         precio_venta INTEGER NOT NULL,
         precio_costo INTEGER NOT NULL,
         importe INTEGER NOT NULL,
-        costo INTEGER NOT NULL
+        costo INTEGER NOT NULL,
+        variante_id TEXT,
+        variante_nombre TEXT,
+        precio_lista INTEGER
       )
     ''');
 
@@ -143,6 +175,7 @@ class AppDatabase {
         delta REAL NOT NULL,
         motivo TEXT NOT NULL,
         transaccion_id TEXT,
+        variante_id TEXT,
         creado_en TEXT NOT NULL
       )
     ''');
@@ -169,6 +202,63 @@ class AppDatabase {
     await db.execute('CREATE INDEX idx_sync_estado ON sync_queue(estado)');
     await db
         .execute('CREATE INDEX idx_lineas_txn ON transaccion_lineas(transaccion_id)');
+    await db
+        .execute('CREATE INDEX idx_variantes_producto ON variantes(producto_id)');
+  }
+
+  /// v1 → v2: variantes (SKUs), perfil CRM del cliente y columnas de
+  /// auditoría de regateo. Cada producto existente recibe su variante
+  /// default reutilizando su mismo uuid — nada se pierde ni se duplica.
+  static Future<void> _migrateV1toV2(Database db) async {
+    await db.execute(
+        "ALTER TABLE clientes ADD COLUMN categoria TEXT NOT NULL DEFAULT 'minorista'");
+    await db.execute(
+        'ALTER TABLE clientes ADD COLUMN descuento_pct REAL NOT NULL DEFAULT 0');
+    await db.execute(
+        'ALTER TABLE clientes ADD COLUMN total_gastado INTEGER NOT NULL DEFAULT 0');
+    await db.execute(
+        'ALTER TABLE clientes ADD COLUMN compras INTEGER NOT NULL DEFAULT 0');
+    await db.execute('ALTER TABLE clientes ADD COLUMN ultima_compra TEXT');
+
+    await db.execute('''
+      CREATE TABLE variantes(
+        id TEXT PRIMARY KEY,
+        producto_id TEXT NOT NULL REFERENCES catalogo(id),
+        nombre TEXT NOT NULL,
+        sku TEXT,
+        precio_costo INTEGER NOT NULL DEFAULT 0,
+        precio_venta INTEGER NOT NULL DEFAULT 0,
+        stock REAL NOT NULL DEFAULT 0,
+        unidad TEXT NOT NULL DEFAULT 'pieza',
+        contenido REAL NOT NULL DEFAULT 1,
+        es_default INTEGER NOT NULL DEFAULT 0,
+        activo INTEGER NOT NULL DEFAULT 1,
+        precios_volumen TEXT,
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      )
+    ''');
+    await db
+        .execute('CREATE INDEX idx_variantes_producto ON variantes(producto_id)');
+
+    await db.execute('''
+      INSERT INTO variantes(id, producto_id, nombre, sku, precio_costo,
+        precio_venta, stock, unidad, contenido, es_default, activo,
+        precios_volumen, creado_en, actualizado_en)
+      SELECT id, id, 'Estándar', NULL, precio_costo, precio_venta,
+        COALESCE(stock, 0), unidad, 1, 1, activo, NULL, creado_en,
+        actualizado_en
+      FROM catalogo WHERE tipo = 'producto'
+    ''');
+
+    await db
+        .execute('ALTER TABLE transaccion_lineas ADD COLUMN variante_id TEXT');
+    await db.execute(
+        'ALTER TABLE transaccion_lineas ADD COLUMN variante_nombre TEXT');
+    await db.execute(
+        'ALTER TABLE transaccion_lineas ADD COLUMN precio_lista INTEGER');
+    await db.execute(
+        'ALTER TABLE movimientos_inventario ADD COLUMN variante_id TEXT');
   }
 
   // ----------------------------------------------------- datos de arranque
@@ -180,10 +270,33 @@ class AppDatabase {
     final now = DateTime.now().toUtc().toIso8601String();
     final batch = db.batch();
 
-    void product(String nombre, String categoria, String unidad, int costo,
+    void variant(String productoId, String id, String nombre, String unidad,
+        int costo, int venta, double stock, double contenido, bool esDefault,
+        {String? preciosVolumen}) {
+      batch.insert('variantes', {
+        'id': id,
+        'producto_id': productoId,
+        'nombre': nombre,
+        'sku': null,
+        'precio_costo': costo,
+        'precio_venta': venta,
+        'stock': stock,
+        'unidad': unidad,
+        'contenido': contenido,
+        'es_default': esDefault ? 1 : 0,
+        'activo': 1,
+        'precios_volumen': preciosVolumen,
+        'creado_en': now,
+        'actualizado_en': now,
+      });
+    }
+
+    /// Producto simple: una variante default que comparte su uuid.
+    String product(String nombre, String categoria, String unidad, int costo,
         int venta, double stock) {
+      final id = ids.newId();
       batch.insert('catalogo', {
-        'id': ids.newId(),
+        'id': id,
         'tipo': 'producto',
         'nombre': nombre,
         'categoria': categoria,
@@ -195,6 +308,8 @@ class AppDatabase {
         'creado_en': now,
         'actualizado_en': now,
       });
+      variant(id, id, 'Estándar', unidad, costo, venta, stock, 1, true);
+      return id;
     }
 
     void service(String nombre, String categoria, int costo, int venta) {
@@ -218,12 +333,33 @@ class AppDatabase {
     product('Semilla de sorgo 20 kg', 'Semillas', 'bulto', 98000, 119000, 15);
     product('Fertilizante triple 17 50 kg', 'Fertilizantes', 'bulto', 78000, 95000, 40);
     product('Urea 46% 50 kg', 'Fertilizantes', 'bulto', 69000, 84000, 32);
-    product('Alimento para becerro 40 kg', 'Alimentos', 'bulto', 52000, 64000, 35);
     product('Sal mineral 25 kg', 'Alimentos', 'bulto', 31000, 42000, 26);
     product('Vacuna triple bovina', 'Veterinaria', 'frasco', 9500, 15000, 60);
     product('Desparasitante oral 1 L', 'Veterinaria', 'litro', 18000, 26000, 18);
     product('Herbicida 1 L', 'Agroquímicos', 'litro', 12000, 18500, 30);
     product('Rollo alambre de púas 34 kg', 'Ferretería', 'rollo', 99000, 119000, 12);
+
+    // Producto con variantes: costal completo (mayoreo) y granel por kg
+    // (menudeo, más caro por unidad, con escalón de volumen a 10+ kg).
+    final alimentoId = ids.newId();
+    batch.insert('catalogo', {
+      'id': alimentoId,
+      'tipo': 'producto',
+      'nombre': 'Alimento para becerro',
+      'categoria': 'Alimentos',
+      'unidad': 'bulto',
+      'precio_costo': 52000,
+      'precio_venta': 64000,
+      'stock': 35,
+      'activo': 1,
+      'creado_en': now,
+      'actualizado_en': now,
+    });
+    variant(alimentoId, alimentoId, 'Costal 40 kg', 'bulto', 52000, 64000, 35,
+        40, true);
+    variant(alimentoId, ids.newId(), 'Granel kg', 'kg', 1300, 1800, 20, 1,
+        false,
+        preciosVolumen: '[{"min":10,"precio":1700}]');
 
     service('Flete local', 'Servicios', 6000, 15000);
     service('Consulta veterinaria', 'Servicios', 0, 25000);
@@ -239,12 +375,17 @@ class AppDatabase {
       'activo': 1
     });
 
-    // Clientes frecuentes de ejemplo.
+    // Clientes frecuentes de ejemplo (uno mayorista con descuento base).
     batch.insert('clientes', {
       'id': ids.newId(),
       'nombre': 'Rancho El Mezquite',
       'telefono': '5550000001',
       'notas': null,
+      'categoria': 'mayorista',
+      'descuento_pct': 5,
+      'total_gastado': 0,
+      'compras': 0,
+      'ultima_compra': null,
       'creado_en': now,
     });
     batch.insert('clientes', {
@@ -252,6 +393,11 @@ class AppDatabase {
       'nombre': 'Granja Santa Fe',
       'telefono': '5550000002',
       'notas': null,
+      'categoria': 'minorista',
+      'descuento_pct': 0,
+      'total_gastado': 0,
+      'compras': 0,
+      'ultima_compra': null,
       'creado_en': now,
     });
 

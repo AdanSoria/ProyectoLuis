@@ -28,8 +28,10 @@ class CompleteOrderUseCase {
           'Un pedido ${order.status.label.toLowerCase()} no puede completarse; '
           'primero asígnalo a un repartidor.'));
     }
+    // Al cobrar se acumula el historial del cliente (total_spent).
     return _transactions.update(
       order.completeWith(paymentMethod, order.totalCents, _now()),
+      creditCustomerStats: true,
     );
   }
 }

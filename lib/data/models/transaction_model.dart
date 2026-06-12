@@ -38,6 +38,9 @@ class TransactionModel {
         'precio_costo': l.unitCostCents,
         'importe': l.totalCents,
         'costo': l.totalCostCents,
+        'variante_id': l.variantId,
+        'variante_nombre': l.variantName,
+        'precio_lista': l.listUnitPriceCents,
       };
 
   static TransactionLine lineFromRow(Map<String, Object?> row) =>
@@ -49,6 +52,9 @@ class TransactionModel {
         quantity: (row['cantidad'] as num).toDouble(),
         unitPriceCents: (row['precio_venta'] as num).toInt(),
         unitCostCents: (row['precio_costo'] as num).toInt(),
+        variantId: row['variante_id'] as String?,
+        variantName: row['variante_nombre'] as String?,
+        listUnitPriceCents: (row['precio_lista'] as num?)?.toInt(),
       );
 
   static Transaction fromRows(

@@ -29,10 +29,17 @@ class _FakeCatalogRepo implements CatalogRepository {
 
   @override
   Future<Result<void>> adjustStock(
-          {required String productId,
+          {required String variantId,
           required double delta,
           required String reason}) async =>
       const Ok(null);
+
+  @override
+  Future<Result<double>> breakVariant(
+          {required String sourceVariantId,
+          required String targetVariantId,
+          required double quantity}) async =>
+      const Ok(0);
 }
 
 class _FakeCustomerRepo implements CustomerRepository {

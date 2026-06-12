@@ -1,6 +1,7 @@
 import 'package:agropos/core/errors/failures.dart';
 import 'package:agropos/core/utils/result.dart';
 import 'package:agropos/domain/entities/delivery_person.dart';
+import 'package:agropos/domain/entities/insights.dart';
 import 'package:agropos/domain/entities/transaction.dart';
 import 'package:agropos/domain/repositories/transaction_repository.dart';
 import 'package:agropos/domain/usecases/assign_order_usecase.dart';
@@ -12,15 +13,17 @@ class _FakeTransactionRepository implements TransactionRepository {
   Transaction? stored;
   Transaction? updated;
   bool? restockFlag;
+  bool? creditFlag;
 
   @override
   Future<Transaction?> getById(String id) async => stored;
 
   @override
   Future<Result<Transaction>> update(Transaction transaction,
-      {bool restock = false}) async {
+      {bool restock = false, bool creditCustomerStats = false}) async {
     updated = transaction;
     restockFlag = restock;
+    creditFlag = creditCustomerStats;
     return Ok(transaction);
   }
 
@@ -37,6 +40,16 @@ class _FakeTransactionRepository implements TransactionRepository {
 
   @override
   Future<int> countOrders({required List<OrderStatus> statuses}) async => 0;
+
+  @override
+  Future<List<TopBuyer>> getTopBuyers({int limit = 10}) async => const [];
+
+  @override
+  Future<List<ChannelSales>> getSalesByChannel() async => const [];
+
+  @override
+  Future<List<CategorySales>> getTopCategories({int limit = 8}) async =>
+      const [];
 }
 
 void main() {
@@ -135,6 +148,8 @@ void main() {
       expect(repository.updated!.paymentMethod, PaymentMethod.efectivo);
       expect(repository.updated!.amountPaidCents,
           repository.updated!.totalCents);
+      // Al cobrar se acredita el historial del cliente (total_spent).
+      expect(repository.creditFlag, isTrue);
     });
 
     test('pendiente no puede saltar a completado', () async {

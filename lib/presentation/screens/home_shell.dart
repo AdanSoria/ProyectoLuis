@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/config/app_config.dart';
 import '../providers.dart';
 import '../widgets/sync_status_chip.dart';
+import 'customers/customers_screen.dart';
 import 'dashboard/dashboard_screen.dart';
 import 'inventory/inventory_screen.dart';
 import 'orders/orders_screen.dart';
@@ -23,7 +24,13 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
 
-  static const _titles = ['Mostrador', 'Pedidos', 'Inventario', 'Resumen'];
+  static const _titles = [
+    'Mostrador',
+    'Pedidos',
+    'Clientes',
+    'Inventario',
+    'Resumen',
+  ];
 
   @override
   void initState() {
@@ -43,6 +50,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     const pages = [
       PosScreen(),
       OrdersScreen(),
+      CustomersScreen(),
       InventoryScreen(),
       DashboardScreen(),
     ];
@@ -86,6 +94,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                       label: const Text('Pedidos'),
                     ),
                     const NavigationRailDestination(
+                      icon: Icon(Icons.people_outline),
+                      selectedIcon: Icon(Icons.people),
+                      label: Text('Clientes'),
+                    ),
+                    const NavigationRailDestination(
                       icon: Icon(Icons.inventory_2_outlined),
                       selectedIcon: Icon(Icons.inventory_2),
                       label: Text('Inventario'),
@@ -117,6 +130,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                 label: 'Mostrador',
               ),
               NavigationDestination(icon: ordersIcon, label: 'Pedidos'),
+              const NavigationDestination(
+                icon: Icon(Icons.people_outline),
+                selectedIcon: Icon(Icons.people),
+                label: 'Clientes',
+              ),
               const NavigationDestination(
                 icon: Icon(Icons.inventory_2_outlined),
                 selectedIcon: Icon(Icons.inventory_2),

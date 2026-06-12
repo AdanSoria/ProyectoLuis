@@ -112,8 +112,10 @@ class ExcelExporter {
       TextCellValue('Fecha'),
       TextCellValue('Estado'),
       TextCellValue('Artículo'),
+      TextCellValue('Presentación'),
       TextCellValue('Tipo'),
       TextCellValue('Cantidad'),
+      TextCellValue('Precio lista'),
       TextCellValue('Precio unitario'),
       TextCellValue('Costo unitario'),
       TextCellValue('Importe'),
@@ -128,8 +130,10 @@ class ExcelExporter {
           TextCellValue(_date(t.createdAt)),
           TextCellValue(t.status.label),
           TextCellValue(line.itemName),
+          TextCellValue(line.variantName ?? ''),
           TextCellValue(line.isService ? 'Servicio' : 'Producto'),
           DoubleCellValue(line.quantity),
+          DoubleCellValue(line.listUnitPriceCents / 100),
           DoubleCellValue(line.unitPriceCents / 100),
           DoubleCellValue(line.unitCostCents / 100),
           DoubleCellValue(line.totalCents / 100),
@@ -140,12 +144,16 @@ class ExcelExporter {
     }
   }
 
+  /// Una fila por VARIANTE (los servicios ocupan una sola fila).
   void _buildInventorySheet(Sheet sheet, List<CatalogItem> catalog) {
     sheet.appendRow([
       TextCellValue('Nombre'),
+      TextCellValue('Presentación'),
+      TextCellValue('SKU'),
       TextCellValue('Categoría'),
       TextCellValue('Tipo'),
       TextCellValue('Unidad'),
+      TextCellValue('Contiene'),
       TextCellValue('Precio costo'),
       TextCellValue('Precio venta'),
       TextCellValue('Margen %'),
@@ -154,30 +162,49 @@ class ExcelExporter {
       TextCellValue('Activo'),
     ]);
 
-    for (final item in catalog) {
-      final marginPercent = item.salePriceCents == 0
-          ? 0.0
-          : item.unitMarginCents * 100 / item.salePriceCents;
-      final product = item is Product ? item : null;
+    double margin(int cost, int sale) =>
+        sale == 0 ? 0 : double.parse(((sale - cost) * 100 / sale).toStringAsFixed(1));
 
-      sheet.appendRow([
-        TextCellValue(item.name),
-        TextCellValue(item.category),
-        TextCellValue(item.isService ? 'Servicio' : 'Producto'),
-        TextCellValue(item.unit),
-        DoubleCellValue(item.costPriceCents / 100),
-        DoubleCellValue(item.salePriceCents / 100),
-        DoubleCellValue(double.parse(marginPercent.toStringAsFixed(1))),
-        if (product == null)
-          TextCellValue('')
-        else
-          DoubleCellValue(product.stock),
-        if (product == null)
-          TextCellValue('')
-        else
-          DoubleCellValue(product.stock * item.costPriceCents / 100),
-        TextCellValue(item.active ? 'Sí' : 'No'),
-      ]);
+    for (final item in catalog) {
+      if (item is! Product) {
+        sheet.appendRow([
+          TextCellValue(item.name),
+          TextCellValue(''),
+          TextCellValue(''),
+          TextCellValue(item.category),
+          TextCellValue('Servicio'),
+          TextCellValue(item.unit),
+          TextCellValue(''),
+          DoubleCellValue(item.costPriceCents / 100),
+          DoubleCellValue(item.salePriceCents / 100),
+          DoubleCellValue(margin(item.costPriceCents, item.salePriceCents)),
+          TextCellValue(''),
+          TextCellValue(''),
+          TextCellValue(item.active ? 'Sí' : 'No'),
+        ]);
+        continue;
+      }
+
+      final variants =
+          item.variants.isEmpty ? [item.defaultVariant] : item.variants;
+      for (final variant in variants) {
+        sheet.appendRow([
+          TextCellValue(item.name),
+          TextCellValue(variant.name),
+          TextCellValue(variant.sku ?? ''),
+          TextCellValue(item.category),
+          TextCellValue('Producto'),
+          TextCellValue(variant.unit),
+          DoubleCellValue(variant.contentUnits),
+          DoubleCellValue(variant.costPriceCents / 100),
+          DoubleCellValue(variant.salePriceCents / 100),
+          DoubleCellValue(
+              margin(variant.costPriceCents, variant.salePriceCents)),
+          DoubleCellValue(variant.stock),
+          DoubleCellValue(variant.stock * variant.costPriceCents / 100),
+          TextCellValue(item.active && variant.active ? 'Sí' : 'No'),
+        ]);
+      }
     }
   }
 

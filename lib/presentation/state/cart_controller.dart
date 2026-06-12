@@ -6,19 +6,43 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/db/app_database.dart';
 import '../../data/models/catalog_item_model.dart';
+import '../../data/models/customer_model.dart';
 import '../../domain/entities/cart_line.dart';
 import '../../domain/entities/catalog_item.dart';
+import '../../domain/entities/customer.dart';
+import '../../domain/entities/product_variant.dart';
 
 /// Estado inmutable del carrito de compras.
+///
+/// Descuento del ticket:
+/// - con cliente asignado, su `discount_percentage` se aplica solo
+///   ([autoDiscountCents]);
+/// - el cajero puede ANULARLO con un monto manual
+///   ([manualDeductionsCents]); `null` = respetar el automático.
 class CartState {
-  const CartState({this.lines = const [], this.deductionsCents = 0});
+  const CartState({
+    this.lines = const [],
+    this.customer,
+    this.manualDeductionsCents,
+  });
 
   final List<CartLine> lines;
 
-  /// Descuento del ticket en centavos.
-  final int deductionsCents;
+  /// Cliente asignado a la venta (fidelización).
+  final Customer? customer;
+
+  /// Descuento manual del cajero; `null` = usar el del perfil del cliente.
+  final int? manualDeductionsCents;
 
   int get subtotalCents => lines.fold(0, (sum, l) => sum + l.totalCents);
+
+  /// Descuento sugerido por el perfil del cliente.
+  int get autoDiscountCents => customer?.discountFor(subtotalCents) ?? 0;
+
+  bool get isManualDiscount => manualDeductionsCents != null;
+
+  int get deductionsCents => manualDeductionsCents ?? autoDiscountCents;
+
   int get totalCents => math.max(0, subtotalCents - deductionsCents);
   double get itemCount => lines.fold(0, (sum, l) => sum + l.quantity);
   bool get isEmpty => lines.isEmpty;
@@ -37,55 +61,87 @@ class CartController extends StateNotifier<CartState> {
 
   final AppDatabase _db;
 
-  /// Un tap = un artículo más. Fricción cero.
-  void add(CatalogItem item, [double quantity = 1]) {
-    final index = state.lines.indexWhere((l) => l.item.id == item.id);
+  bool _sameSlot(CartLine a, CartLine b) =>
+      a.item.id == b.item.id &&
+      (a.effectiveVariant?.id) == (b.effectiveVariant?.id);
+
+  /// Un tap = un artículo más (de la variante indicada). Fricción cero.
+  void add(CatalogItem item, {ProductVariant? variant, double quantity = 1}) {
+    final incoming =
+        CartLine(item: item, quantity: quantity, variant: variant);
+    final index = state.lines.indexWhere((l) => _sameSlot(l, incoming));
     final lines = [...state.lines];
     if (index >= 0) {
       lines[index] =
           lines[index].copyWith(quantity: lines[index].quantity + quantity);
     } else {
-      lines.add(CartLine(item: item, quantity: quantity));
+      lines.add(incoming);
     }
     _update(lines: lines);
   }
 
-  void setQuantity(String itemId, double quantity) {
+  void setQuantity(CartLine target, double quantity) {
     if (quantity <= 0) {
-      remove(itemId);
+      remove(target);
       return;
     }
-    final lines = [
+    _update(lines: [
       for (final l in state.lines)
-        if (l.item.id == itemId) l.copyWith(quantity: quantity) else l,
-    ];
-    _update(lines: lines);
+        if (_sameSlot(l, target)) l.copyWith(quantity: quantity) else l,
+    ]);
   }
 
-  void increment(String itemId) {
-    final line = state.lines.where((l) => l.item.id == itemId).firstOrNull;
-    if (line != null) setQuantity(itemId, line.quantity + 1);
+  void increment(CartLine line) => setQuantity(line, line.quantity + 1);
+
+  void decrement(CartLine line) => setQuantity(line, line.quantity - 1);
+
+  void remove(CartLine target) {
+    _update(lines: state.lines.where((l) => !_sameSlot(l, target)).toList());
   }
 
-  void decrement(String itemId) {
-    final line = state.lines.where((l) => l.item.id == itemId).firstOrNull;
-    if (line != null) setQuantity(itemId, line.quantity - 1);
+  /// Regateo: fija (o quita con `null`) el precio unitario negociado.
+  void setPriceOverride(CartLine target, int? unitPriceCents) {
+    _update(lines: [
+      for (final l in state.lines)
+        if (_sameSlot(l, target))
+          l.copyWith(priceOverride: () => unitPriceCents)
+        else
+          l,
+    ]);
   }
 
-  void remove(String itemId) {
-    _update(lines: state.lines.where((l) => l.item.id != itemId).toList());
+  /// Asigna el cliente: su descuento de perfil aplica automáticamente
+  /// (mientras no haya un descuento manual).
+  void setCustomer(Customer? customer) {
+    state = CartState(
+      lines: state.lines,
+      customer: customer,
+      manualDeductionsCents: state.manualDeductionsCents,
+    );
+    unawaited(_persistDraft());
   }
 
-  void setDeductions(int cents) {
-    _update(deductionsCents: math.max(0, cents));
+  /// Anula el descuento automático con un monto manual; `null` regresa
+  /// al descuento del perfil.
+  void setManualDeductions(int? cents) {
+    state = CartState(
+      lines: state.lines,
+      customer: state.customer,
+      manualDeductionsCents: cents == null ? null : math.max(0, cents),
+    );
+    unawaited(_persistDraft());
   }
 
-  void clear() => _update(lines: const [], deductionsCents: 0);
+  void clear() {
+    state = const CartState();
+    unawaited(_persistDraft());
+  }
 
-  void _update({List<CartLine>? lines, int? deductionsCents}) {
+  void _update({List<CartLine>? lines}) {
     state = CartState(
       lines: lines ?? state.lines,
-      deductionsCents: deductionsCents ?? state.deductionsCents,
+      customer: state.customer,
+      manualDeductionsCents: state.manualDeductionsCents,
     );
     unawaited(_persistDraft());
   }
@@ -94,12 +150,19 @@ class CartController extends StateNotifier<CartState> {
 
   Future<void> _persistDraft() async {
     final draft = jsonEncode({
-      'deducciones': state.deductionsCents,
+      'manual_deducciones': state.manualDeductionsCents,
+      'cliente':
+          state.customer == null ? null : CustomerModel.toRow(state.customer!),
       'lineas': [
         for (final l in state.lines)
           {
             'cantidad': l.quantity,
+            'precio_manual': l.priceOverrideCents,
             'item': CatalogItemModel.toRow(l.item),
+            'variante': l.effectiveVariant == null
+                ? null
+                : CatalogItemModel.variantToRow(
+                    l.effectiveVariant!, l.item.createdAt, l.item.updatedAt),
           },
       ],
     });
@@ -117,16 +180,29 @@ class CartController extends StateNotifier<CartState> {
         final map = entry as Map<String, dynamic>;
         final item = CatalogItemModel.fromRow(
             Map<String, Object?>.from(map['item'] as Map));
+        final variantMap = map['variante'];
         lines.add(CartLine(
           item: item,
           quantity: (map['cantidad'] as num).toDouble(),
+          variant: variantMap == null
+              ? null
+              : CatalogItemModel.variantFromRow(
+                  Map<String, Object?>.from(variantMap as Map)),
+          priceOverrideCents: (map['precio_manual'] as num?)?.toInt(),
         ));
       }
+
+      final customerMap = decoded['cliente'];
 
       if (!mounted) return;
       state = CartState(
         lines: lines,
-        deductionsCents: (decoded['deducciones'] as num? ?? 0).toInt(),
+        customer: customerMap == null
+            ? null
+            : CustomerModel.fromRow(
+                Map<String, Object?>.from(customerMap as Map)),
+        manualDeductionsCents:
+            (decoded['manual_deducciones'] as num?)?.toInt(),
       );
     } on Exception {
       // Borrador corrupto: se descarta en silencio, nunca debe tirar la app.

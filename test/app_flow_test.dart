@@ -64,11 +64,13 @@ void main() {
     expect(find.textContaining('cobrada'), findsOneWidget);
     expect(find.textContaining('Toca un producto'), findsOneWidget);
 
-    // El inventario bajó y la operación quedó encolada para sincronizar.
-    final stock = await db.db.query('catalogo',
-        columns: ['stock'],
-        where: 'nombre = ?',
-        whereArgs: ['Herbicida 1 L']);
+    // El inventario bajó (la verdad del stock vive en `variantes`)
+    // y la operación quedó encolada para sincronizar.
+    final stock = await db.db.rawQuery(
+      'SELECT v.stock AS stock FROM variantes v '
+      'JOIN catalogo c ON c.id = v.producto_id WHERE c.nombre = ?',
+      ['Herbicida 1 L'],
+    );
     expect((stock.single['stock'] as num).toDouble(), 29);
 
     final queued =

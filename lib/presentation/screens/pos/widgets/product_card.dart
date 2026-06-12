@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/config/app_config.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../domain/entities/catalog_item.dart';
+import '../../../../domain/entities/product_variant.dart';
 import '../../../providers.dart';
 
 /// Tarjeta del catálogo. **Un tap = un artículo al carrito.**
@@ -22,14 +23,19 @@ class ProductCard extends ConsumerWidget {
         !outOfStock &&
         product.stock <= AppConfig.lowStockThreshold;
 
+    final multiVariant = product != null && product.hasMultipleVariants;
+
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: outOfStock
+        onTap: outOfStock && !multiVariant
             ? null
-            : () => ref.read(cartProvider.notifier).add(item),
-        onLongPress:
-            outOfStock ? null : () => _askQuantity(context, ref),
+            : () => multiVariant
+                ? _pickVariant(context, ref, product)
+                : ref.read(cartProvider.notifier).add(item),
+        onLongPress: outOfStock || multiVariant
+            ? null
+            : () => _askQuantity(context, ref, null),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -58,7 +64,9 @@ class ProductCard extends ConsumerWidget {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerRight,
                       child: Text(
-                        Money.format(item.salePriceCents),
+                        multiVariant
+                            ? 'desde ${Money.format(product.minSalePriceCents)}'
+                            : Money.format(item.salePriceCents),
                         style: Theme.of(context)
                             .textTheme
                             .titleMedium
@@ -86,6 +94,14 @@ class ProductCard extends ConsumerWidget {
                       .labelSmall
                       ?.copyWith(color: scheme.tertiary),
                 )
+              else if (multiVariant)
+                Text(
+                  '${product.sellableVariants.length} presentaciones',
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelSmall
+                      ?.copyWith(color: scheme.primary),
+                )
               else
                 Text(
                   outOfStock
@@ -109,19 +125,78 @@ class ProductCard extends ConsumerWidget {
   String _formatStock(double stock) =>
       stock % 1 == 0 ? stock.toInt().toString() : stock.toStringAsFixed(2);
 
+  /// Selector de presentación: 1 toque sobre la variante = al carrito.
+  Future<void> _pickVariant(
+    BuildContext context,
+    WidgetRef ref,
+    Product product,
+  ) async {
+    final scheme = Theme.of(context).colorScheme;
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(product.name,
+                style: Theme.of(sheetContext).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final variant in product.sellableVariants)
+                  ActionChip(
+                    avatar: Icon(
+                      Icons.inventory_2_outlined,
+                      size: 18,
+                      color: variant.stock <= 0
+                          ? scheme.error
+                          : scheme.onSurfaceVariant,
+                    ),
+                    label: Text(
+                      '${variant.name} · ${Money.format(variant.salePriceCents)}'
+                      ' · ${_formatStock(variant.stock)} ${variant.unit}',
+                    ),
+                    onPressed: variant.stock <= 0
+                        ? null
+                        : () {
+                            ref
+                                .read(cartProvider.notifier)
+                                .add(item, variant: variant);
+                            Navigator.of(sheetContext).pop();
+                          },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Captura rápida de cantidad para venta a granel o por bulto.
-  Future<void> _askQuantity(BuildContext context, WidgetRef ref) async {
+  Future<void> _askQuantity(
+    BuildContext context,
+    WidgetRef ref,
+    ProductVariant? variant,
+  ) async {
+    final unit = variant?.unit ?? item.unit;
     final controller = TextEditingController();
     final quantity = await showDialog<double>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(item.name),
+        title: Text(variant == null ? item.name : '${item.name} · ${variant.name}'),
         content: TextField(
           controller: controller,
           autofocus: true,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(
-            labelText: 'Cantidad (${item.unit})',
+            labelText: 'Cantidad ($unit)',
             hintText: 'Ej. 3',
           ),
           onSubmitted: (value) =>
@@ -142,7 +217,9 @@ class ProductCard extends ConsumerWidget {
     );
 
     if (quantity != null && quantity > 0) {
-      ref.read(cartProvider.notifier).add(item, quantity);
+      ref
+          .read(cartProvider.notifier)
+          .add(item, variant: variant, quantity: quantity);
     }
   }
 }

@@ -180,6 +180,8 @@ class _ChargeContentState extends ConsumerState<_ChargeContent> {
             amountPaidCents:
                 _method == PaymentMethod.efectivo ? _receivedCents : 0,
             deductionsCents: cart.deductionsCents,
+            // CRM: acredita la compra al cliente asignado en el ticket.
+            customer: cart.customer,
           ),
         );
 
