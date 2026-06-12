@@ -12,7 +12,7 @@ import 'item_editor_sheet.dart';
 
 /// Inventario de un vistazo: existencias por variante, márgenes y ajuste
 /// rápido de stock (+/-) sin formularios. Los productos con varias
-/// presentaciones se despliegan y pueden FRACCIONARSE (desensamble).
+/// presentaciones se despliegan y pueden A GRANELSE (desensamble).
 class InventoryScreen extends ConsumerWidget {
   const InventoryScreen({super.key});
 
@@ -68,9 +68,8 @@ class _InventoryTile extends ConsumerWidget {
         : (item.unitMarginCents * 100 / item.salePriceCents).round();
 
     final leading = CircleAvatar(
-      backgroundColor: item.isService
-          ? scheme.tertiaryContainer
-          : scheme.primaryContainer,
+      backgroundColor:
+          item.isService ? scheme.tertiaryContainer : scheme.primaryContainer,
       child: Icon(
         item.isService ? Icons.support_agent : Icons.inventory_2_outlined,
         color: item.isService
@@ -84,8 +83,7 @@ class _InventoryTile extends ConsumerWidget {
       return ListTile(
         onTap: () => showItemEditorSheet(context, existing: item),
         leading: leading,
-        title:
-            Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(
           '${item.category} · Costo ${Money.format(item.costPriceCents)} · '
           'Venta ${Money.format(item.salePriceCents)} · Margen $marginPercent%',
@@ -129,8 +127,7 @@ class _InventoryTile extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               TextButton.icon(
-                onPressed: () =>
-                    showItemEditorSheet(context, existing: item),
+                onPressed: () => showItemEditorSheet(context, existing: item),
                 icon: const Icon(Icons.edit_outlined, size: 18),
                 label: const Text('Editar'),
               ),
@@ -139,7 +136,7 @@ class _InventoryTile extends ConsumerWidget {
                 onPressed: () =>
                     showBreakVariantDialog(context, product: product),
                 icon: const Icon(Icons.call_split, size: 18),
-                label: const Text('Fraccionar'),
+                label: const Text('A GRANEL'),
               ),
             ],
           ),

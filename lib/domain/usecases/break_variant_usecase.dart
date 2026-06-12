@@ -45,7 +45,7 @@ class BreakVariantUseCase {
     }
     if (source.contentUnits <= 0 || target.contentUnits <= 0) {
       return const Err(ValidationFailure(
-          'Define el contenido de ambas presentaciones para fraccionar.'));
+          'Define el contenido de ambas presentaciones para A GRANEL.'));
     }
     if (source.contentUnits <= target.contentUnits) {
       return Err(ValidationFailure(

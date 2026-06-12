@@ -7,7 +7,7 @@ import '../../../domain/entities/product_variant.dart';
 import '../../providers.dart';
 
 /// Gestión de presentaciones (SKUs) de un producto: agregar, editar,
-/// definir contenido (para fraccionar) y precios escalonados por volumen.
+/// definir contenido (para A GRANEL) y precios escalonados por volumen.
 /// Cada cambio se guarda de inmediato (atómico + Outbox).
 Future<void> showVariantManagerSheet(
   BuildContext context, {
@@ -112,8 +112,8 @@ class _VariantManagerState extends ConsumerState<_VariantManager> {
                                 'Contiene ${variant.contentUnits % 1 == 0 ? variant.contentUnits.toInt() : variant.contentUnits}'
                                 '${variant.priceTiers.isEmpty ? '' : ' · ${variant.priceTiers.length} escalón(es)'}',
                               ),
-                              trailing: const Icon(Icons.edit_outlined,
-                                  size: 18),
+                              trailing:
+                                  const Icon(Icons.edit_outlined, size: 18),
                             ),
                         ],
                       ),
@@ -159,9 +159,8 @@ class _VariantManagerState extends ConsumerState<_VariantManager> {
       unit: variants.first.unit,
     );
 
-    final saved = await ref
-        .read(catalogRepositoryProvider)
-        .save(updated, isNew: false);
+    final saved =
+        await ref.read(catalogRepositoryProvider).save(updated, isNew: false);
 
     if (!mounted) return;
     final message = saved.failureOrNull?.message;
@@ -280,19 +279,19 @@ class _VariantFormState extends ConsumerState<_VariantForm> {
                 Expanded(
                   child: TextField(
                     controller: _sku,
-                    decoration: const InputDecoration(
-                        labelText: 'SKU (opcional)'),
+                    decoration:
+                        const InputDecoration(labelText: 'SKU (opcional)'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextField(
                     controller: _content,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
                       labelText: 'Contiene',
-                      helperText: 'unidades base (p/ fraccionar)',
+                      helperText: 'unidades base (p/ A GRANEL)',
                     ),
                   ),
                 ),
@@ -304,8 +303,8 @@ class _VariantFormState extends ConsumerState<_VariantForm> {
                 Expanded(
                   child: TextField(
                     controller: _cost,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
                         labelText: 'Precio costo', prefixText: r'$ '),
                   ),
@@ -314,8 +313,8 @@ class _VariantFormState extends ConsumerState<_VariantForm> {
                 Expanded(
                   child: TextField(
                     controller: _sale,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
                         labelText: 'Precio venta', prefixText: r'$ '),
                     onChanged: (_) => setState(() {}),
@@ -397,10 +396,10 @@ class _VariantFormState extends ConsumerState<_VariantForm> {
             ],
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: _name.text.trim().isEmpty ||
-                      Money.fromText(_sale.text) <= 0
-                  ? null
-                  : _submit,
+              onPressed:
+                  _name.text.trim().isEmpty || Money.fromText(_sale.text) <= 0
+                      ? null
+                      : _submit,
               icon: const Icon(Icons.save_outlined),
               label: const Text('GUARDAR'),
             ),
@@ -421,8 +420,7 @@ class _VariantFormState extends ConsumerState<_VariantForm> {
         if ((double.tryParse(tier.min.text.replaceAll(',', '')) ?? 0) > 0 &&
             Money.fromText(tier.price.text) > 0)
           PriceTier(
-            minQuantity:
-                double.parse(tier.min.text.replaceAll(',', '')),
+            minQuantity: double.parse(tier.min.text.replaceAll(',', '')),
             unitPriceCents: Money.fromText(tier.price.text),
           ),
     ];
@@ -437,8 +435,7 @@ class _VariantFormState extends ConsumerState<_VariantForm> {
       stock: existing?.stock ??
           (double.tryParse(_stock.text.replaceAll(',', '')) ?? 0),
       unit: existing?.unit ?? widget.product.unit,
-      contentUnits:
-          double.tryParse(_content.text.replaceAll(',', '')) ?? 1,
+      contentUnits: double.tryParse(_content.text.replaceAll(',', '')) ?? 1,
       isDefault: existing?.isDefault ?? false,
       active: _active,
       priceTiers: tiers,
