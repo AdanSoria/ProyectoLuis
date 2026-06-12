@@ -9,8 +9,11 @@
 class AppConfig {
   AppConfig._();
 
-  /// Nombre visible de la aplicación.
-  static const String appName = 'AgroPOS';
+  /// Nombre visible de la aplicación (marca del negocio).
+  static const String appName = 'El Alazán';
+
+  /// Subtítulo de la marca.
+  static const String appTagline = 'Agroalimentos';
 
   /// URL base de la API central. Vacía = modo 100% local
   /// (la cola de sincronización acumula operaciones hasta configurarla).

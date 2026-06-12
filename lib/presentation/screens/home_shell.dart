@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
 import '../providers.dart';
+import '../widgets/brand_logo.dart';
 import '../widgets/sync_status_chip.dart';
 import 'customers/customers_screen.dart';
 import 'dashboard/dashboard_screen.dart';
@@ -66,7 +67,19 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         final useRail = constraints.maxWidth >= AppConfig.railBreakpoint;
 
         final appBar = AppBar(
-          title: Text('${AppConfig.appName} · ${_titles[_index]}'),
+          title: Row(
+            children: [
+              const BrandLogo(size: 30),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  '${AppConfig.appName} · ${_titles[_index]}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
           actions: const [SyncStatusChip(), SizedBox(width: 12)],
         );
 
@@ -81,7 +94,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                   labelType: NavigationRailLabelType.all,
                   leading: const Padding(
                     padding: EdgeInsets.only(bottom: 8),
-                    child: Icon(Icons.storefront, size: 32),
+                    child: BrandLogo(size: 40),
                   ),
                   destinations: [
                     const NavigationRailDestination(

@@ -210,54 +210,122 @@ class TicketPanel extends ConsumerWidget {
     );
   }
 
+  /// Descuento flexible al momento: por **porcentaje** (chips rápidos o
+  /// libre) o por **monto directo en pesos** — porque en mostrador el
+  /// trato varía venta a venta. El historial queda intacto: solo cambia
+  /// la deducción del ticket.
   Future<void> _askDiscount(BuildContext context, WidgetRef ref) async {
     final cart = ref.read(cartProvider);
     final controller = TextEditingController();
+    var asPercent = true;
+
     final result = await showDialog<(bool, int)>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Descuento del ticket'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (cart.customer != null && cart.customer!.discountPercent > 0)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'Perfil del cliente: '
-                  '${_percent(cart.customer!.discountPercent)}% '
-                  '(${Money.format(cart.autoDiscountCents)})',
-                  style: Theme.of(dialogContext).textTheme.bodySmall,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setLocal) {
+          int centsFromInput() {
+            if (!asPercent) return Money.fromText(controller.text);
+            final pct = double.tryParse(
+                    controller.text.replaceAll(',', '.').trim()) ??
+                0;
+            return (cart.subtotalCents * pct.clamp(0, 100) / 100).round();
+          }
+
+          final preview = centsFromInput();
+
+          return AlertDialog(
+            title: const Text('Descuento del ticket'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (cart.customer != null &&
+                    cart.customer!.discountPercent > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      'Perfil del cliente: '
+                      '${_percent(cart.customer!.discountPercent)}% '
+                      '(${Money.format(cart.autoDiscountCents)})',
+                      style: Theme.of(dialogContext).textTheme.bodySmall,
+                    ),
+                  ),
+                SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment(
+                      value: true,
+                      icon: Icon(Icons.percent),
+                      label: Text('Porcentaje'),
+                    ),
+                    ButtonSegment(
+                      value: false,
+                      icon: Icon(Icons.attach_money),
+                      label: Text('Monto'),
+                    ),
+                  ],
+                  selected: {asPercent},
+                  onSelectionChanged: (selection) => setLocal(() {
+                    asPercent = selection.first;
+                    controller.clear();
+                  }),
                 ),
-              ),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Monto manual en pesos',
-                prefixText: r'$ ',
-              ),
-              onSubmitted: (value) => Navigator.of(dialogContext)
-                  .pop((false, Money.fromText(value))),
+                const SizedBox(height: 12),
+                if (asPercent)
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final pct in const [5, 10, 15, 20])
+                        ActionChip(
+                          label: Text('$pct%'),
+                          onPressed: () =>
+                              setLocal(() => controller.text = '$pct'),
+                        ),
+                    ],
+                  ),
+                if (asPercent) const SizedBox(height: 8),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText:
+                        asPercent ? 'Porcentaje' : 'Monto en pesos',
+                    prefixText: asPercent ? null : r'$ ',
+                    suffixText: asPercent ? '%' : null,
+                  ),
+                  onChanged: (_) => setLocal(() {}),
+                  onSubmitted: (_) => Navigator.of(dialogContext)
+                      .pop((false, centsFromInput())),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Descuento: ${Money.format(preview)} · '
+                  'Total: ${Money.format((cart.subtotalCents - preview).clamp(0, cart.subtotalCents))}',
+                  style: Theme.of(dialogContext)
+                      .textTheme
+                      .titleSmall
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop((true, 0)),
-            child: Text(cart.customer != null
-                ? 'Usar el del cliente'
-                : 'Sin descuento'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext)
-                .pop((false, Money.fromText(controller.text))),
-            child: const Text('Aplicar manual'),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () =>
+                    Navigator.of(dialogContext).pop((true, 0)),
+                child: Text(cart.customer != null
+                    ? 'Usar el del cliente'
+                    : 'Sin descuento'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext)
+                    .pop((false, centsFromInput())),
+                child: const Text('Aplicar'),
+              ),
+            ],
+          );
+        },
       ),
     );
 

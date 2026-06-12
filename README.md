@@ -1,4 +1,4 @@
-# 🌽 AgroPOS — Punto de Venta Offline
+# 🐴 El Alazán Agroalimentos — Punto de Venta Offline
 
 > Bienvenido a tu proyecto de Punto de Venta Offline, Luis :D
 >
@@ -15,11 +15,13 @@
 | **Mostrador** | Pantalla dividida: catálogo visual a la izquierda, ticket a la derecha. 1 toque = 1 artículo al carrito. Cobro en 2 toques con cambio calculado. |
 | **Pedidos** | Pedidos por WhatsApp/teléfono en **3 pasos desde el carrito** (cliente → repartidor → confirmar). Máquina de estados: `Pendiente → Asignado → Completado` (+ cancelación con devolución de stock). |
 | **Clientes (CRM)** | Perfil comercial por cliente: categoría (Minorista/Mayorista), **descuento base que se aplica solo** al asignarlo a la venta (anulable), historial `total_spent`/compras acumulado al cobrar, y analítica local: top de compradores, ventas por canal y categorías — todo en SQLite, sin nube. |
-| **Variantes (SKUs)** | Producto padre con presentaciones independientes (Costal 50 kg / Granel kg), cada una con SKU, precio, **stock propio** y **precios escalonados por volumen**. **Fraccionamiento**: abrir un costal acredita su equivalente en granel, atómico. **Regateo**: precio manual por línea con precio de lista auditado. |
+| **Variantes (SKUs)** | Producto padre con presentaciones independientes (Costal 50 kg / Granel kg), cada una con SKU, precio, **stock propio** y **precios escalonados por volumen**. **Pasar a granel**: abrir un costal acredita su equivalente en la presentación granel (se puede crear ahí mismo), atómico; venta por % del costal o por unidad exacta. **Regateo**: precio manual por línea con precio de lista auditado, y descuento del ticket por % o monto. |
 | **Inventario** | Las variantes descuentan stock; servicios (flete, consulta veterinaria) se cobran sin tocar inventario. Ajustes +/- de un toque por presentación y alta exprés. |
 | **Resumen** | Flujo de caja del día: ventas cobradas, **utilidad neta**, ticket promedio, top de vendidos y salud de la sincronización. |
 | **Excel** | **Importación** de catálogo/clientes desde `.xlsx`/`.csv` con asistente de mapeo de columnas (funciona con cualquier formato de hoja), y **exportación** de reportes `.xlsx` con 3 hojas: Ventas, Detalle por artículo e Inventario valorizado. |
 | **Sincronización** | Outbox Pattern: cada operación queda en cola local y se envía **por lotes y en silencio** cuando hay conexión. UUID v4 de cliente en todo registro. |
+
+Para usar el logotipo real coloca el archivo en `assets/branding/logo.png` (mientras no exista se muestra un monograma dorado de la marca).
 
 El primer arranque siembra un catálogo de demostración (semillas,
 fertilizantes, veterinaria, fletes…) para que puedas vender desde el

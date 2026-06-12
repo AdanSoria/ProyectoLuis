@@ -63,6 +63,14 @@ class _DeliveryFlowState extends ConsumerState<_DeliveryFlow> {
   static const _titles = ['Cliente', 'Repartidor', 'Confirmar'];
 
   @override
+  void initState() {
+    super.initState();
+    // El cliente ya asignado en el ticket se hereda al pedido (con su
+    // descuento); así no se captura dos veces ni se pierde el trato.
+    _selectedCustomer = ref.read(cartProvider).customer;
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
@@ -213,7 +221,12 @@ class _DeliveryFlowState extends ConsumerState<_DeliveryFlow> {
             labelText: 'Nombre',
             prefixIcon: Icon(Icons.badge_outlined),
           ),
-          onChanged: (_) => setState(() => _selectedCustomer = null),
+          onChanged: (_) => setState(() {
+            // Capturar a mano = cliente distinto: se suelta el del
+            // ticket para que su descuento no se cuele a otro pedido.
+            _selectedCustomer = null;
+            ref.read(cartProvider.notifier).setCustomer(null);
+          }),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -422,13 +435,26 @@ class _DeliveryFlowState extends ConsumerState<_DeliveryFlow> {
   Future<void> _register() async {
     setState(() => _processing = true);
 
-    // Mini-CRM silencioso: el cliente capturado a mano se guarda para
-    // aparecer como chip de "reciente" en el siguiente pedido.
+    // Mini-CRM silencioso: el cliente capturado a mano primero se busca
+    // (para no duplicar y respetar su perfil/descuento); si de verdad es
+    // nuevo, se guarda para aparecer como chip en el siguiente pedido.
     var customer = _selectedCustomer;
-    if (customer == null && _nameController.text.trim().isNotEmpty) {
+    final typedName = _nameController.text.trim();
+    if (customer == null && typedName.isNotEmpty) {
+      final matches =
+          await ref.read(customerRepositoryProvider).search(typedName);
+      customer = matches
+          .where((c) => c.name.toLowerCase() == typedName.toLowerCase())
+          .firstOrNull;
+      if (customer != null) {
+        // Cliente existente reconocido: su descuento aplica al pedido.
+        ref.read(cartProvider.notifier).setCustomer(customer);
+      }
+    }
+    if (customer == null && typedName.isNotEmpty) {
       final newCustomer = Customer(
         id: ref.read(idGeneratorProvider).newId(),
-        name: _nameController.text.trim(),
+        name: typedName,
         phone: _phoneController.text.trim().isEmpty
             ? null
             : _phoneController.text.trim(),
