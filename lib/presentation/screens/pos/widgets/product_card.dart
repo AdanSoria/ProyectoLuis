@@ -125,7 +125,9 @@ class ProductCard extends ConsumerWidget {
   String _formatStock(double stock) =>
       stock % 1 == 0 ? stock.toInt().toString() : stock.toStringAsFixed(2);
 
-  /// Selector de presentación: 1 toque sobre la variante = al carrito.
+  /// Selector de presentación: 1 toque = una unidad al carrito; el
+  /// botón de báscula abre la captura de cantidad (con atajos % para
+  /// granel: "el 50% del costal").
   Future<void> _pickVariant(
     BuildContext context,
     WidgetRef ref,
@@ -136,43 +138,48 @@ class ProductCard extends ConsumerWidget {
       context: context,
       useSafeArea: true,
       builder: (sheetContext) => Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(product.name,
-                style: Theme.of(sheetContext).textTheme.titleLarge),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final variant in product.sellableVariants)
-                  ActionChip(
-                    avatar: Icon(
-                      Icons.inventory_2_outlined,
-                      size: 18,
-                      color: variant.stock <= 0
-                          ? scheme.error
-                          : scheme.onSurfaceVariant,
-                    ),
-                    label: Text(
-                      '${variant.name} · ${Money.format(variant.salePriceCents)}'
-                      ' · ${_formatStock(variant.stock)} ${variant.unit}',
-                    ),
-                    onPressed: variant.stock <= 0
-                        ? null
-                        : () {
-                            ref
-                                .read(cartProvider.notifier)
-                                .add(item, variant: variant);
-                            Navigator.of(sheetContext).pop();
-                          },
-                  ),
-              ],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(product.name,
+                  style: Theme.of(sheetContext).textTheme.titleLarge),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 4),
+            for (final variant in product.sellableVariants)
+              ListTile(
+                enabled: variant.stock > 0,
+                leading: Icon(
+                  Icons.inventory_2_outlined,
+                  color: variant.stock <= 0
+                      ? scheme.error
+                      : scheme.onSurfaceVariant,
+                ),
+                title: Text(
+                    '${variant.name} · ${Money.format(variant.salePriceCents)}'),
+                subtitle: Text(variant.stock <= 0
+                    ? 'Agotado'
+                    : '${_formatStock(variant.stock)} ${variant.unit} disponibles'
+                        '${variant.priceTiers.isEmpty ? '' : ' · precio por volumen'}'),
+                trailing: IconButton(
+                  tooltip: 'Capturar cantidad',
+                  icon: const Icon(Icons.scale_outlined),
+                  onPressed: variant.stock <= 0
+                      ? null
+                      : () {
+                          Navigator.of(sheetContext).pop();
+                          _askQuantity(context, ref, variant);
+                        },
+                ),
+                onTap: () {
+                  ref.read(cartProvider.notifier).add(item, variant: variant);
+                  Navigator.of(sheetContext).pop();
+                },
+              ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -180,6 +187,9 @@ class ProductCard extends ConsumerWidget {
   }
 
   /// Captura rápida de cantidad para venta a granel o por bulto.
+  /// En granel ofrece atajos por **porcentaje de la presentación mayor**
+  /// (vender "el 50% del costal" sin hacer cuentas) además de la unidad
+  /// exacta (1 kg).
   Future<void> _askQuantity(
     BuildContext context,
     WidgetRef ref,
@@ -187,20 +197,66 @@ class ProductCard extends ConsumerWidget {
   ) async {
     final unit = variant?.unit ?? item.unit;
     final controller = TextEditingController();
+
+    // Presentación mayor de referencia para los atajos porcentuales.
+    ProductVariant? reference;
+    if (variant != null && variant.contentUnits == 1 && item is Product) {
+      for (final v in (item as Product).sellableVariants) {
+        if (v.contentUnits > 1 &&
+            (reference == null ||
+                v.contentUnits > reference.contentUnits)) {
+          reference = v;
+        }
+      }
+    }
+
+    String fmt(double v) =>
+        v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(2);
+
     final quantity = await showDialog<double>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(variant == null ? item.name : '${item.name} · ${variant.name}'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(
-            labelText: 'Cantidad ($unit)',
-            hintText: 'Ej. 3',
-          ),
-          onSubmitted: (value) =>
-              Navigator.of(dialogContext).pop(double.tryParse(value)),
+        title: Text(
+            variant == null ? item.name : '${item.name} · ${variant.name}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (reference != null) ...[
+              Text(
+                'Atajos sobre ${reference.name} '
+                '(${fmt(reference.contentUnits)} $unit):',
+                style: Theme.of(dialogContext).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final pct in const [10, 25, 50, 100])
+                    ActionChip(
+                      label: Text(
+                          '$pct% = ${fmt(reference.contentUnits * pct / 100)} $unit'),
+                      onPressed: () => controller.text =
+                          fmt(reference!.contentUnits * pct / 100),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Cantidad ($unit)',
+                hintText: 'Ej. 3 o 0.5',
+              ),
+              onSubmitted: (value) =>
+                  Navigator.of(dialogContext).pop(double.tryParse(value)),
+            ),
+          ],
         ),
         actions: [
           TextButton(

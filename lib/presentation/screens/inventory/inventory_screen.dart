@@ -80,9 +80,14 @@ class _InventoryTile extends ConsumerWidget {
     );
 
     // Servicios y productos simples: fila plana como siempre.
+    // Mantener presionado un producto abre "Pasar a granel" (y desde
+    // ahí se puede crear su presentación granel).
     if (product == null || !product.hasMultipleVariants) {
       return ListTile(
         onTap: () => showItemEditorSheet(context, existing: item),
+        onLongPress: product == null
+            ? null
+            : () => showBreakVariantDialog(context, product: product),
         leading: leading,
         title:
             Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -101,7 +106,7 @@ class _InventoryTile extends ConsumerWidget {
       );
     }
 
-    // Producto con variantes: desplegable con stock por presentación.
+    // Producto con presentaciones: desplegable con stock por cada una.
     return ExpansionTile(
       leading: leading,
       title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -139,7 +144,7 @@ class _InventoryTile extends ConsumerWidget {
                 onPressed: () =>
                     showBreakVariantDialog(context, product: product),
                 icon: const Icon(Icons.call_split, size: 18),
-                label: const Text('Fraccionar'),
+                label: const Text('Granel'),
               ),
             ],
           ),
