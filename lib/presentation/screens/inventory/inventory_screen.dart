@@ -12,7 +12,7 @@ import 'item_editor_sheet.dart';
 
 /// Inventario de un vistazo: existencias por variante, márgenes y ajuste
 /// rápido de stock (+/-) sin formularios. Los productos con varias
-/// presentaciones se despliegan y pueden A GRANELSE (desensamble).
+/// presentaciones se despliegan y pueden pasarse a granel (desensamble).
 class InventoryScreen extends ConsumerWidget {
   const InventoryScreen({super.key});
 

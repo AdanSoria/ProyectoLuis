@@ -49,7 +49,7 @@ void main() {
       expect(txn.itemCount, 3);
     });
 
-    test('cantidades A GRANELias redondean a centavos', () {
+    test('cantidades con decimales (granel) redondean a centavos', () {
       final txn = Transaction(
         id: 't2',
         folio: '260610-BBBB',

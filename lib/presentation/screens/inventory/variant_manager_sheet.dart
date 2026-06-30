@@ -7,7 +7,7 @@ import '../../../domain/entities/product_variant.dart';
 import '../../providers.dart';
 
 /// Gestión de presentaciones (SKUs) de un producto: agregar, editar,
-/// definir contenido (para A GRANEL) y precios escalonados por volumen.
+/// definir contenido (para pasar a granel) y precios escalonados por volumen.
 /// Cada cambio se guarda de inmediato (atómico + Outbox).
 Future<void> showVariantManagerSheet(
   BuildContext context, {
