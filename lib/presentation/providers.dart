@@ -166,6 +166,12 @@ final cartProvider = StateNotifierProvider<CartController, CartState>(
   (ref) => CartController(ref.watch(appDatabaseProvider)),
 );
 
+/// Última variante elegida por producto en la sesión actual (solo memoria,
+/// no se persiste): precarga la presentación más usada al reabrir la hoja
+/// de captura de un producto. Llave: productId → variantId.
+final lastVariantByProductProvider =
+    StateProvider<Map<String, String>>((_) => {});
+
 final catalogListProvider = FutureProvider<List<CatalogItem>>(
   (ref) => ref.watch(catalogRepositoryProvider).getAll(),
 );

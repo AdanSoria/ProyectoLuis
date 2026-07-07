@@ -35,6 +35,42 @@ class AppConfig {
   /// Umbral para resaltar productos con stock bajo en el inventario.
   static const double lowStockThreshold = 5;
 
+  /// Unidades **inequívocamente a granel**: un toque abre directamente la
+  /// hoja de captura de cantidad en vez de "1 toque = 1 pieza". Se dejan
+  /// fuera unidades ambiguas como `litro`/`metro` (suelen ser una
+  /// presentación de pieza: botella de 1 L, rollo) — esas siguen abriendo
+  /// la hoja con long-press o cuando el producto tiene varias variantes,
+  /// y conservan sus atajos en [bulkQuantityShortcuts].
+  static const Set<String> weightVolumeUnits = {
+    'kg', 'kilo', 'kilos', 'g', 'gramo', 'gramos', 'granel',
+  };
+
+  /// Atajos de cantidad para granel, por unidad. Se usan cuando la variante
+  /// es unitaria (`contentUnits == 1`) y no hay una presentación mayor de
+  /// referencia en el mismo producto. La llave `'default'` cubre el resto.
+  static const Map<String, List<double>> bulkQuantityShortcuts = {
+    'kg': [1, 5, 10, 25, 50],
+    'kilo': [1, 5, 10, 25, 50],
+    'g': [100, 250, 500, 1000],
+    'gramo': [100, 250, 500, 1000],
+    'litro': [1, 5, 10, 20],
+    'lt': [1, 5, 10, 20],
+    'l': [1, 5, 10, 20],
+    'ml': [250, 500, 1000],
+    'metro': [1, 5, 10, 50],
+    'm': [1, 5, 10, 50],
+    'default': [1, 5, 10, 25],
+  };
+
+  /// ¿La unidad se vende por peso/volumen? (insensible a mayúsculas).
+  static bool isWeightVolume(String unit) =>
+      weightVolumeUnits.contains(unit.trim().toLowerCase());
+
+  /// Atajos de cantidad para una unidad de granel (cae a `default`).
+  static List<double> bulkShortcutsFor(String unit) =>
+      bulkQuantityShortcuts[unit.trim().toLowerCase()] ??
+      bulkQuantityShortcuts['default']!;
+
   /// Punto de quiebre de diseño: a partir de este ancho se usa el
   /// modo mostrador de pantalla dividida (catálogo + ticket).
   static const double splitScreenBreakpoint = 840;
