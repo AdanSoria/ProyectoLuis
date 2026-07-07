@@ -36,11 +36,6 @@ class TicketPanel extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Text('Ticket', style: textTheme.titleLarge),
                 const Spacer(),
-                IconButton(
-                  tooltip: 'Ítem libre',
-                  icon: const Icon(Icons.add_box_outlined),
-                  onPressed: () => showFreeItemDialog(context, ref),
-                ),
                 if (cart.isNotEmpty)
                   IconButton(
                     tooltip: 'Vaciar carrito',
@@ -48,32 +43,6 @@ class TicketPanel extends ConsumerWidget {
                     onPressed: () => _confirmClear(context, ref),
                   ),
               ],
-            ),
-          ),
-          // ------------------------------------------------ cliente (CRM)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: cart.customer == null
-                  ? ActionChip(
-                      avatar: const Icon(Icons.person_add_alt, size: 18),
-                      label: const Text('Asignar cliente'),
-                      onPressed: () => _pickCustomer(context, ref),
-                    )
-                  : InputChip(
-                      avatar: const Icon(Icons.person, size: 18),
-                      label: Text(
-                        cart.customer!.discountPercent > 0
-                            ? '${cart.customer!.name} · '
-                                '${cart.customer!.category.label} '
-                                '${_percent(cart.customer!.discountPercent)}%'
-                            : cart.customer!.name,
-                      ),
-                      onPressed: () => _pickCustomer(context, ref),
-                      onDeleted: () =>
-                          ref.read(cartProvider.notifier).setCustomer(null),
-                    ),
             ),
           ),
           Expanded(
@@ -104,10 +73,55 @@ class TicketPanel extends ConsumerWidget {
           ),
           const Divider(height: 1),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // ---- Barra de acciones rápidas (siempre visible) ----
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: _TicketAction(
+                        icon: cart.customer == null
+                            ? Icons.person_add_alt
+                            : Icons.person,
+                        label: cart.customer?.name ?? 'Cliente',
+                        highlighted: cart.customer != null,
+                        onTap: () => _pickCustomer(context, ref),
+                        onClear: cart.customer == null
+                            ? null
+                            : () => ref
+                                .read(cartProvider.notifier)
+                                .setCustomer(null),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      flex: 2,
+                      child: _TicketAction(
+                        icon: Icons.percent,
+                        label: cart.deductionsCents == 0
+                            ? 'Descuento'
+                            : '-${Money.format(cart.deductionsCents)}',
+                        highlighted: cart.deductionsCents > 0,
+                        onTap: cart.isEmpty
+                            ? null
+                            : () => _askDiscount(context, ref),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      flex: 2,
+                      child: _TicketAction(
+                        icon: Icons.add_box_outlined,
+                        label: 'Ítem libre',
+                        onTap: () => showFreeItemDialog(context, ref),
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -116,34 +130,24 @@ class TicketPanel extends ConsumerWidget {
                         style: textTheme.bodyMedium),
                   ],
                 ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    TextButton.icon(
-                      style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          visualDensity: VisualDensity.compact),
-                      onPressed: cart.isEmpty
-                          ? null
-                          : () => _askDiscount(context, ref),
-                      icon: const Icon(Icons.percent, size: 16),
-                      label: Text(
+                if (cart.deductionsCents > 0) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
                         cart.isManualDiscount
                             ? 'Descuento manual'
-                            : cart.autoDiscountCents > 0
-                                ? 'Descuento cliente'
-                                : 'Descuento',
+                            : 'Descuento cliente',
+                        style: textTheme.bodyMedium
+                            ?.copyWith(color: scheme.tertiary),
                       ),
-                    ),
-                    Text(
-                      cart.deductionsCents == 0
-                          ? '—'
-                          : '-${Money.format(cart.deductionsCents)}',
-                      style: textTheme.bodyMedium
-                          ?.copyWith(color: scheme.tertiary),
-                    ),
-                  ],
-                ),
+                      Text('-${Money.format(cart.deductionsCents)}',
+                          style: textTheme.bodyMedium
+                              ?.copyWith(color: scheme.tertiary)),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 4),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -346,6 +350,74 @@ class TicketPanel extends ConsumerWidget {
 
 bool _isFreeItem(CatalogItem item) =>
     item is Service && item.category == kFreeItemCategory;
+
+/// Botón compacto de la barra de acciones del ticket (Cliente / Descuento
+/// / Ítem libre). Muestra ícono + etiqueta truncable y, opcionalmente, una
+/// "x" para limpiar (quitar cliente).
+class _TicketAction extends StatelessWidget {
+  const _TicketAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.onClear,
+    this.highlighted = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final VoidCallback? onClear;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final enabled = onTap != null;
+    final fg = !enabled
+        ? scheme.onSurfaceVariant.withValues(alpha: 0.4)
+        : highlighted
+            ? scheme.onPrimaryContainer
+            : scheme.onSurfaceVariant;
+
+    return Material(
+      color: highlighted ? scheme.primaryContainer : scheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 18, color: fg),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelLarge
+                      ?.copyWith(color: fg),
+                ),
+              ),
+              if (onClear != null)
+                GestureDetector(
+                  onTap: onClear,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 2),
+                    child: Icon(Icons.close, size: 16, color: fg),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Etiqueta compacta para el ticket (regla de precio, "Libre"…).
 class _Tag extends StatelessWidget {
