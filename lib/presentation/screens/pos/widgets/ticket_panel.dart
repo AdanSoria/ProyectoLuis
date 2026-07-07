@@ -351,6 +351,28 @@ class TicketPanel extends ConsumerWidget {
 bool _isFreeItem(CatalogItem item) =>
     item is Service && item.category == kFreeItemCategory;
 
+/// Etiqueta de la regla de precio aplicada a una línea del ticket.
+Widget _priceRuleTag(BuildContext context, PriceRule rule) {
+  final scheme = Theme.of(context).colorScheme;
+  return switch (rule) {
+    PriceRule.lista => _Tag(
+        label: 'Lista',
+        background: scheme.surfaceContainerHighest,
+        onColor: scheme.onSurfaceVariant,
+      ),
+    PriceRule.mayoreo => _Tag(
+        label: 'Mayoreo',
+        background: scheme.tertiaryContainer,
+        onColor: scheme.onTertiaryContainer,
+      ),
+    PriceRule.manual => _Tag(
+        label: 'Manual',
+        background: scheme.secondaryContainer,
+        onColor: scheme.onSecondaryContainer,
+      ),
+  };
+}
+
 /// Botón compacto de la barra de acciones del ticket (Cliente / Descuento
 /// / Ítem libre). Muestra ícono + etiqueta truncable y, opcionalmente, una
 /// "x" para limpiar (quitar cliente).
@@ -487,20 +509,36 @@ class _LineRow extends ConsumerWidget {
                   ],
                 ),
                 // Mantener presionado el precio = regateo.
-                InkWell(
-                  onLongPress: () => _negotiatePrice(context, ref),
-                  child: Text(
-                    line.hasOverride
-                        ? '${Money.format(line.unitPriceCents)} '
-                            '(lista ${Money.format(line.listUnitPriceCents)})'
-                        : '${Money.format(line.unitPriceCents)} '
-                            '· ${line.effectiveVariant?.unit ?? line.item.unit}',
-                    style: textTheme.labelSmall?.copyWith(
-                      color:
-                          line.hasOverride ? scheme.tertiary : scheme.outline,
-                      fontWeight: line.hasOverride ? FontWeight.bold : null,
+                Row(
+                  children: [
+                    Flexible(
+                      child: InkWell(
+                        onLongPress: () => _negotiatePrice(context, ref),
+                        child: Text(
+                          line.hasOverride
+                              ? '${Money.format(line.unitPriceCents)} '
+                                  '(lista ${Money.format(line.listUnitPriceCents)})'
+                              : '${Money.format(line.unitPriceCents)} '
+                                  '· ${line.effectiveVariant?.unit ?? line.item.unit}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.labelSmall?.copyWith(
+                            color: line.hasOverride
+                                ? scheme.tertiary
+                                : scheme.outline,
+                            fontWeight:
+                                line.hasOverride ? FontWeight.bold : null,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    // Transparencia: la regla que fijó este precio unitario.
+                    // (En ítems libres basta la etiqueta "Libre".)
+                    if (!_isFreeItem(line.item)) ...[
+                      const SizedBox(width: 6),
+                      _priceRuleTag(context, line.priceRule),
+                    ],
+                  ],
                 ),
               ],
             ),

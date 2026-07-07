@@ -60,6 +60,8 @@ void main() {
     expect(find.text('Ítem libre'), findsOneWidget);
     // El total del ítem agregado se muestra.
     expect(find.text('\$840.00'), findsWidgets);
+    // Transparencia de precio: la línea a precio de lista muestra "Lista".
+    expect(find.text('Lista'), findsOneWidget);
 
     // Tocar "Ítem libre" abre su diálogo.
     await tester.tap(find.text('Ítem libre'));

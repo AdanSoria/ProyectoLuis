@@ -1,6 +1,19 @@
 import 'catalog_item.dart';
 import 'product_variant.dart';
 
+/// Regla que determinó el precio unitario efectivo de una línea. Se usa
+/// para dar transparencia en el ticket (etiqueta por línea).
+enum PriceRule {
+  /// Precio de lista de la variante/servicio.
+  lista,
+
+  /// Se aplicó un escalón de volumen (`PriceTier`).
+  mayoreo,
+
+  /// Sobreescritura manual del cajero (regateo).
+  manual,
+}
+
 /// Línea del carrito en construcción (aún no es una venta).
 /// Es la entrada del caso de uso `ProcessTransactionUseCase`.
 ///
@@ -43,6 +56,15 @@ class CartLine {
       effectiveVariant?.costPriceCents ?? item.costPriceCents;
 
   bool get hasOverride => priceOverrideCents != null;
+
+  /// Regla que fijó [unitPriceCents] (solo lectura, deriva de los getters
+  /// existentes): regateo > escalón de volumen > lista.
+  PriceRule get priceRule {
+    if (hasOverride) return PriceRule.manual;
+    final base = effectiveVariant?.salePriceCents ?? item.salePriceCents;
+    if (listUnitPriceCents != base) return PriceRule.mayoreo;
+    return PriceRule.lista;
+  }
 
   /// Nombre para el ticket: incluye la variante cuando no es la default.
   String get displayName {
