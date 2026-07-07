@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/utils/money.dart';
 import '../../../../domain/entities/cart_line.dart';
+import '../../../../domain/entities/catalog_item.dart';
 import '../../../providers.dart';
 import 'charge_dialog.dart';
 import 'customer_picker_sheet.dart';
 import 'delivery_flow_sheet.dart';
+import 'free_item_dialog.dart';
 
 /// Ticket de cobro (lado derecho del mostrador).
 /// Carrito interactivo: cliente con descuento de perfil, steppers de
@@ -34,6 +36,11 @@ class TicketPanel extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Text('Ticket', style: textTheme.titleLarge),
                 const Spacer(),
+                IconButton(
+                  tooltip: 'Ítem libre',
+                  icon: const Icon(Icons.add_box_outlined),
+                  onPressed: () => showFreeItemDialog(context, ref),
+                ),
                 if (cart.isNotEmpty)
                   IconButton(
                     tooltip: 'Vaciar carrito',
@@ -337,6 +344,40 @@ class TicketPanel extends ConsumerWidget {
   }
 }
 
+bool _isFreeItem(CatalogItem item) =>
+    item is Service && item.category == kFreeItemCategory;
+
+/// Etiqueta compacta para el ticket (regla de precio, "Libre"…).
+class _Tag extends StatelessWidget {
+  const _Tag({
+    required this.label,
+    required this.background,
+    required this.onColor,
+  });
+
+  final String label;
+  final Color background;
+  final Color onColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context)
+            .textTheme
+            .labelSmall
+            ?.copyWith(color: onColor, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
 class _LineRow extends ConsumerWidget {
   const _LineRow({required this.line});
 
@@ -355,10 +396,24 @@ class _LineRow extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(line.displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.bodyMedium),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(line.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.bodyMedium),
+                    ),
+                    if (_isFreeItem(line.item)) ...[
+                      const SizedBox(width: 6),
+                      _Tag(
+                        label: 'Libre',
+                        background: scheme.tertiaryContainer,
+                        onColor: scheme.onTertiaryContainer,
+                      ),
+                    ],
+                  ],
+                ),
                 // Mantener presionado el precio = regateo.
                 InkWell(
                   onLongPress: () => _negotiatePrice(context, ref),
